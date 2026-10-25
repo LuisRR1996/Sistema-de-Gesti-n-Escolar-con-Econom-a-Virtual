@@ -1,0 +1,91 @@
+# -------------------- Maven --------------------
+target/
+pom.xml.tag
+pom.xml.releaseBackup
+pom.xml.versionsBackup
+pom.xml.next
+release.properties
+dependency-reduced-pom.xml
+buildNumber.properties
+.mvn/timing.properties
+
+# -------------------- Java / compilados --------------------
+*.class
+*.jar
+*.war
+*.ear
+*.nar
+*.log
+hs_err_pid*
+replay_pid*
+*.hprof
+
+# El wrapper de Maven sí debe versionarse
+!.mvn/wrapper/maven-wrapper.jar
+
+# -------------------- NetBeans --------------------
+# Datos privados del proyecto (configuración local, no compartir)
+nbproject/private/
+nbbuild/
+dist/
+nbdist/
+nbactions.xml
+nb-configuration.xml
+.nb-gradle/
+
+# -------------------- IntelliJ IDEA --------------------
+.idea/
+*.iml
+*.iws
+*.ipr
+out/
+
+# -------------------- Eclipse --------------------
+.classpath
+.project
+.settings/
+bin/
+.factorypath
+.apt_generated/
+
+# -------------------- Visual Studio Code --------------------
+.vscode/
+*.code-workspace
+
+# -------------------- Entorno y secretos --------------------
+.env
+.dotenv
+.env.local
+.env.*.local
+*.env
+# La plantilla sí se versiona
+!.env.example
+application-local.properties
+*.jks
+*.p12
+*.keystore
+secrets.properties
+
+# -------------------- Bases de datos locales --------------------
+*.db
+*.mv.db
+*.trace.db
+*.sqlite
+
+# -------------------- Sistema operativo --------------------
+.DS_Store
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+ehthumbs.db
+desktop.ini
+
+# -------------------- Misc --------------------
+*.swp
+*.swo
+*~
+*.bak
+*.tmp
+*.orig
+*.rej
