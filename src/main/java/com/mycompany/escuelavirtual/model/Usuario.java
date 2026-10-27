@@ -2,11 +2,16 @@ package com.mycompany.escuelavirtual.model;
 
 import com.mycompany.escuelavirtual.model.enums.Rol;
 
+import java.time.LocalDateTime;
+import java.util.Objects;
+
 public class Usuario {
     private Integer idUsuario, idPadre;
     private String nombres, apellidos, correo, passwordHash, grado, seccion;
     private Rol rol;
     private boolean estado = true;
+    private int intentosFallidos;
+    private LocalDateTime bloqueadoHasta, ultimoAcceso;
 
     public Usuario() {
 
@@ -104,6 +109,42 @@ public class Usuario {
 
     public void setEstado(boolean v) {
         estado = v;
+    }
+
+    public int getIntentosFallidos() {
+        return intentosFallidos;
+    }
+
+    public void setIntentosFallidos(int v) {
+        if (v < 0)
+            throw new IllegalArgumentException("intentosFallidos no puede ser negativo");
+        intentosFallidos = v;
+    }
+
+    public LocalDateTime getBloqueadoHasta() {
+        return bloqueadoHasta;
+    }
+
+    public void setBloqueadoHasta(LocalDateTime v) {
+        bloqueadoHasta = v;
+    }
+
+    public LocalDateTime getUltimoAcceso() {
+        return ultimoAcceso;
+    }
+
+    public void setUltimoAcceso(LocalDateTime v) {
+        ultimoAcceso = v;
+    }
+
+    /** Indica si la cuenta sigue bloqueada en el instante indicado. */
+    public boolean estaBloqueado(LocalDateTime ahora) {
+        return bloqueadoHasta != null && bloqueadoHasta.isAfter(Objects.requireNonNull(ahora, "ahora"));
+    }
+
+    /** Nombre para mostrar en la cabecera y en los saludos. */
+    public String getNombreCompleto() {
+        return nombres + " " + apellidos;
     }
 
     private static String required(String v, String name) {
