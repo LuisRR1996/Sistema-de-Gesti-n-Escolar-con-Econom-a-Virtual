@@ -89,3 +89,6 @@ desktop.ini
 *.tmp
 *.orig
 *.rej
+
+# -------------- Otros ------------------
+docs/
