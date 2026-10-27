@@ -11,6 +11,6 @@ package com.mycompany.escuelavirtual;
 public class EscuelaVirtual {
 
     public static void main(String[] args) {
-        System.out.println("Hello World!");
+        Main.main(args);
     }
 }
