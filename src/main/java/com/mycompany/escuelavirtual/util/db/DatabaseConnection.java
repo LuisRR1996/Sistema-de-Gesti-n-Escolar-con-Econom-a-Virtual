@@ -18,6 +18,7 @@ public final class DatabaseConnection {
         try (Connection con = getConnection()) {
             return true;
         } catch (SQLException | IllegalStateException e) {
+            System.err.println("Detalle del error de conexión: " + e.getMessage());
             return false;
         }
     }
