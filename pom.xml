@@ -8,13 +8,18 @@
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <maven.compiler.release>25</maven.compiler.release>
-        <exec.mainClass>com.mycompany.escuelavirtual.EscuelaVirtual</exec.mainClass>
+        <exec.mainClass>com.mycompany.escuelavirtual.Main</exec.mainClass>
     </properties>
     <dependencies>
         <dependency>
             <groupId>io.github.cdimascio</groupId>
             <artifactId>dotenv-java</artifactId>
             <version>3.2.0</version>
+        </dependency>
+        <dependency>
+            <groupId>com.microsoft.sqlserver</groupId>
+            <artifactId>mssql-jdbc</artifactId>
+            <version>13.2.0.jre11</version>
         </dependency>
     </dependencies>
 </project>
