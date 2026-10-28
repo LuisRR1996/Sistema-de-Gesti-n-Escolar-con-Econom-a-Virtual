@@ -6,6 +6,7 @@ import com.mycompany.escuelavirtual.util.Formato;
 import com.mycompany.escuelavirtual.util.ui.DialogoConfirmacion;
 import com.mycompany.escuelavirtual.util.ui.Estilos;
 import com.mycompany.escuelavirtual.util.ui.Toast;
+
 import java.awt.BorderLayout;
 import java.awt.CardLayout;
 import java.awt.Dimension;
@@ -41,8 +42,23 @@ public class MainFrame extends JFrame {
         add(crearCabecera(usuario), BorderLayout.NORTH);
 
         centro.setBackground(Estilos.FONDO);
-        centro.setBorder(Estilos.margen());
-        centro.add(Estilos.subtitulo("Seleccione un módulo en el árbol de la izquierda."), "inicio");
+        
+        // Evaluar el rol del usuario conectado para inyectar el panel inicial correcto
+        JPanel panelInicio = switch (usuario.getRol()) {
+            case ADMIN -> new PanelInicioAdmin();
+            case ESTUDIANTE -> new PanelInicioEstudiante();
+            case PADRE -> new PanelInicioPadre();
+            case DOCENTE -> new PanelInicioDocente();
+        };
+
+        // 1. Agregamos el panel al contenedor
+        centro.add(panelInicio, "inicio");
+        
+        // 2. FORZAMOS al CardLayout a que muestre el panel que acabamos de agregar
+        CardLayout layout = (CardLayout) centro.getLayout();
+        layout.show(centro, "inicio");
+
+        // 3. Agregamos el centro a la ventana
         add(centro, BorderLayout.CENTER);
 
         add(crearBarraEstado(usuario), BorderLayout.SOUTH);
