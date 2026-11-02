@@ -4,8 +4,14 @@
  */
 package com.mycompany.escuelavirtual.view;
 
+import com.mycompany.escuelavirtual.controller.UsuarioController;
+import com.mycompany.escuelavirtual.dao.LogroDAO;
+import com.mycompany.escuelavirtual.dao.ProductoDAO;
+import com.mycompany.escuelavirtual.dao.RecargaDAO;
+import com.mycompany.escuelavirtual.dao.RecargaDAO.DetalleRecarga;
+import com.mycompany.escuelavirtual.model.Producto;
+import com.mycompany.escuelavirtual.model.Usuario;
 import com.mycompany.escuelavirtual.model.enums.EstadoRecarga;
-import com.mycompany.escuelavirtual.model.enums.MetodoPago;
 import com.mycompany.escuelavirtual.model.enums.Rol;
 import com.mycompany.escuelavirtual.util.Formato;
 import com.mycompany.escuelavirtual.util.Validador;
@@ -20,7 +26,7 @@ import java.awt.GridBagLayout;
 import java.awt.GridLayout;
 import java.awt.Insets;
 import java.math.BigDecimal;
-import java.time.LocalDateTime;
+import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
 import javax.swing.BorderFactory;
@@ -35,94 +41,42 @@ import javax.swing.JTabbedPane;
 import javax.swing.JTextField;
 import javax.swing.SpinnerNumberModel;
 
-/**
- *
- * @author user
- */
 public class PanelInicioAdmin extends JPanel {
 
     private static final long serialVersionUID = 1L;
 
-    private static class FilaUsuario {
-        int id;
-        String nombres, apellidos, correo, grado, seccion;
-        Rol rol;
-        boolean activo;
-
-        FilaUsuario(int id, String nombres, String apellidos, String correo, Rol rol, String grado, String seccion, boolean activo) {
-            this.id = id;
-            this.nombres = nombres;
-            this.apellidos = apellidos;
-            this.correo = correo;
-            this.rol = rol;
-            this.grado = grado;
-            this.seccion = seccion;
-            this.activo = activo;
+    private record ItemComboUsuario(Integer id, String etiqueta) {
+        @Override
+        public String toString() {
+            return etiqueta;
         }
     }
 
-    private static class FilaRecarga {
-        int id;
-        String padre, estudiante;
-        BigDecimal monto;
-        MetodoPago metodo;
-        EstadoRecarga estado;
-        LocalDateTime fecha;
+    private final UsuarioController usuarioController = new UsuarioController();
+    private final ProductoDAO productoDAO = new ProductoDAO();
+    private final RecargaDAO recargaDAO = new RecargaDAO();
+    private final LogroDAO logroDAO = new LogroDAO();
 
-        FilaRecarga(int id, String padre, String estudiante, BigDecimal monto, MetodoPago metodo, EstadoRecarga estado, LocalDateTime fecha) {
-            this.id = id;
-            this.padre = padre;
-            this.estudiante = estudiante;
-            this.monto = monto;
-            this.metodo = metodo;
-            this.estado = estado;
-            this.fecha = fecha;
-        }
-    }
+    private final int idAdminActual;
 
-    private static class FilaProducto {
-        int id, stock;
-        String nombre, descripcion;
-        BigDecimal precioDinero;
-        Integer precioMonedas;
-        boolean activo;
-
-        FilaProducto(int id, String nombre, String descripcion, BigDecimal precioDinero, Integer precioMonedas, int stock, boolean activo) {
-            this.id = id;
-            this.nombre = nombre;
-            this.descripcion = descripcion;
-            this.precioDinero = precioDinero;
-            this.precioMonedas = precioMonedas;
-            this.stock = stock;
-            this.activo = activo;
-        }
-
-        String alertaStock() {
-            if (!activo) return "INACTIVO";
-            if (stock == 0) return "AGOTADO - REPONER";
-            if (stock <= 10) return "⚠ BAJO STOCK (Reponer)";
-            return "OK";
-        }
-    }
-
-    private final List<FilaUsuario> usuarios = new ArrayList<>();
-    private final List<FilaRecarga> recargas = new ArrayList<>();
-    private final List<FilaProducto> productos = new ArrayList<>();
+    private List<Usuario> usuarios = new ArrayList<>();
+    private List<DetalleRecarga> recargas = new ArrayList<>();
+    private List<Producto> productos = new ArrayList<>();
 
     private final JLabel lblKpiActivos = Estilos.titulo("0");
     private final JLabel lblKpiInactivos = Estilos.titulo("0");
     private final JLabel lblKpiRecargas = Estilos.titulo("0");
     private final JLabel lblKpiStockBajo = Estilos.titulo("0");
 
-    private PanelTablaBase<FilaUsuario> tablaActivos;
-    private PanelTablaBase<FilaUsuario> tablaInactivos;
-    private PanelTablaBase<FilaRecarga> tablaRecargas;
-    private PanelTablaBase<FilaProducto> tablaProductos;
-    private JComboBox<String> cboAlumnoMonedas;
+    private PanelTablaBase<Usuario> tablaActivos;
+    private PanelTablaBase<Usuario> tablaInactivos;
+    private PanelTablaBase<DetalleRecarga> tablaRecargas;
+    private PanelTablaBase<Producto> tablaProductos;
+    private JComboBox<ItemComboUsuario> cboAlumnoMonedas;
+    private final JComboBox<ItemComboUsuario> cboPadreU = new JComboBox<>();
 
-    // Variables de estado para edición
-    private FilaUsuario usuarioEnEdicion = null;
-    private FilaProducto productoEnEdicion = null;
+    private Usuario usuarioEnEdicion = null;
+    private Producto productoEnEdicion = null;
 
     // Controles de formulario de Usuario
     private final JTextField txtNombresU = new JTextField(14);
@@ -145,15 +99,19 @@ public class PanelInicioAdmin extends JPanel {
     private final JButton btnCancelarProducto = Estilos.botonSecundario("Cancelar");
 
     public PanelInicioAdmin() {
+        this(null);
+    }
+
+    public PanelInicioAdmin(Usuario adminActual) {
+        this.idAdminActual = (adminActual != null && adminActual.getIdUsuario() != null) ? adminActual.getIdUsuario() : 1;
+
         setLayout(new BorderLayout(0, Estilos.ESPACIO));
         setBackground(Estilos.FONDO);
         setBorder(Estilos.margen());
 
-        cargarDatosIniciales();
-
         JPanel norte = new JPanel(new BorderLayout(0, Estilos.ESPACIO));
         norte.setOpaque(false);
-        norte.add(Estilos.titulo("Panel de Administración General"), BorderLayout.NORTH);
+        norte.add(Estilos.titulo("Panel de Administración General (Conectado a SQL Server)"), BorderLayout.NORTH);
         norte.add(crearBarraIndicadores(), BorderLayout.CENTER);
         add(norte, BorderLayout.NORTH);
 
@@ -164,7 +122,7 @@ public class PanelInicioAdmin extends JPanel {
         pestanas.addTab("3. Catálogo de Productos y Control de Stock", crearSeccionProductos());
 
         add(pestanas, BorderLayout.CENTER);
-        refrescarTodo();
+        recargarDesdeBD();
     }
 
     private JPanel crearBarraIndicadores() {
@@ -193,13 +151,19 @@ public class PanelInicioAdmin extends JPanel {
         contenedor.setBackground(Estilos.FONDO);
         contenedor.setBorder(Estilos.margen());
 
-        // Cuadro izquierdo: Formulario de Usuario
         JPanel form = new JPanel(new GridBagLayout());
         form.setBackground(Estilos.FONDO_PANEL);
         form.setBorder(Estilos.tarjeta());
 
         btnCancelarUsuario.setVisible(false);
         btnCancelarUsuario.addActionListener(e -> limpiarFormularioUsuario());
+
+        cboRolU.addActionListener(e -> {
+            boolean esAlumno = cboRolU.getSelectedItem() == Rol.ESTUDIANTE;
+            txtGradoU.setEnabled(esAlumno);
+            txtSeccionU.setEnabled(esAlumno);
+            cboPadreU.setEnabled(esAlumno);
+        });
 
         btnGuardarUsuario.addActionListener(e -> {
             if (!Validador.esTextoValido(txtNombresU.getText()) || !Validador.esTextoValido(txtApellidosU.getText())) {
@@ -211,29 +175,43 @@ public class PanelInicioAdmin extends JPanel {
                 return;
             }
             Rol rol = (Rol) cboRolU.getSelectedItem();
-            
-            if (usuarioEnEdicion == null) {
-                // Agregar nuevo
-                int nuevoId = usuarios.size() + 1;
-                usuarios.add(new FilaUsuario(
-                        nuevoId, txtNombresU.getText().trim(), txtApellidosU.getText().trim(),
-                        txtCorreoU.getText().trim().toLowerCase(), rol,
-                        rol == Rol.ESTUDIANTE ? txtGradoU.getText().trim() : "-",
-                        rol == Rol.ESTUDIANTE ? txtSeccionU.getText().trim() : "-", true
-                ));
-                Toast.exito(this, "Usuario registrado con éxito.");
-            } else {
-                // Actualizar existente
-                usuarioEnEdicion.nombres = txtNombresU.getText().trim();
-                usuarioEnEdicion.apellidos = txtApellidosU.getText().trim();
-                usuarioEnEdicion.correo = txtCorreoU.getText().trim().toLowerCase();
-                usuarioEnEdicion.rol = rol;
-                usuarioEnEdicion.grado = rol == Rol.ESTUDIANTE ? txtGradoU.getText().trim() : "-";
-                usuarioEnEdicion.seccion = rol == Rol.ESTUDIANTE ? txtSeccionU.getText().trim() : "-";
-                Toast.exito(this, "Datos del usuario actualizados.");
+            ItemComboUsuario padreSel = (ItemComboUsuario) cboPadreU.getSelectedItem();
+            Integer idPadre = (rol == Rol.ESTUDIANTE && padreSel != null) ? padreSel.id() : null;
+
+            try {
+                if (usuarioEnEdicion == null) {
+                    String clave = new String(txtClaveU.getPassword());
+                    if (clave.isBlank()) {
+                        DialogoConfirmacion.error(this, "Ingrese una contraseña inicial.");
+                        return;
+                    }
+                    usuarioController.registrarUsuario(
+                            txtNombresU.getText(),
+                            txtApellidosU.getText(),
+                            txtCorreoU.getText(),
+                            clave,
+                            rol,
+                            txtGradoU.getText(),
+                            txtSeccionU.getText(),
+                            idPadre
+                    );
+                    Toast.exito(this, "Usuario guardado en SQL Server.");
+                } else {
+                    usuarioEnEdicion.setNombres(txtNombresU.getText().trim());
+                    usuarioEnEdicion.setApellidos(txtApellidosU.getText().trim());
+                    usuarioEnEdicion.setCorreo(txtCorreoU.getText().trim().toLowerCase());
+                    usuarioEnEdicion.setRol(rol);
+                    usuarioEnEdicion.setGrado(rol == Rol.ESTUDIANTE ? txtGradoU.getText().trim() : null);
+                    usuarioEnEdicion.setSeccion(rol == Rol.ESTUDIANTE ? txtSeccionU.getText().trim() : null);
+                    usuarioEnEdicion.setIdPadre(idPadre);
+                    usuarioController.actualizarUsuario(usuarioEnEdicion);
+                    Toast.exito(this, "Usuario actualizado en SQL Server.");
+                }
+                limpiarFormularioUsuario();
+                recargarDesdeBD();
+            } catch (SQLException ex) {
+                DialogoConfirmacion.error(this, "No se pudo guardar en BD: " + ex.getMessage());
             }
-            limpiarFormularioUsuario();
-            refrescarTodo();
         });
 
         JPanel panelBotones = new JPanel(new FlowLayout(FlowLayout.LEFT, Estilos.ESPACIO_CHICO, 0));
@@ -250,9 +228,9 @@ public class PanelInicioAdmin extends JPanel {
         agregarFilaForm(form, f++, "Rol:", cboRolU, false);
         agregarFilaForm(form, f++, "Grado (Alumno):", txtGradoU, false);
         agregarFilaForm(form, f++, "Sección (Alumno):", txtSeccionU, false);
+        agregarFilaForm(form, f++, "Padre (Alumno):", cboPadreU, false);
         agregarFilaForm(form, f, "", panelBotones, false);
 
-        // Cuadros derechos: Activos e Inactivos
         JPanel derecha = new JPanel(new GridLayout(2, 1, 0, Estilos.ESPACIO));
         derecha.setOpaque(false);
 
@@ -260,14 +238,14 @@ public class PanelInicioAdmin extends JPanel {
         JPanel cuadroActivos = new JPanel(new BorderLayout(0, Estilos.ESPACIO_CHICO));
         cuadroActivos.setBackground(Estilos.FONDO_PANEL);
         cuadroActivos.setBorder(Estilos.tarjeta());
-        
+
         JPanel cabActivos = new JPanel(new FlowLayout(FlowLayout.RIGHT, Estilos.ESPACIO, 0));
         cabActivos.setOpaque(false);
         JButton btnEditarActivo = Estilos.botonSecundario("Editar Seleccionado");
         JButton btnDesactivar = Estilos.botonSecundario("Pasar a Inactivo");
         cabActivos.add(btnEditarActivo);
         cabActivos.add(btnDesactivar);
-        
+
         JPanel topActivos = new JPanel(new BorderLayout());
         topActivos.setOpaque(false);
         topActivos.add(Estilos.subtitulo("USUARIOS Y ALUMNOS ACTIVOS"), BorderLayout.WEST);
@@ -275,17 +253,30 @@ public class PanelInicioAdmin extends JPanel {
 
         btnEditarActivo.addActionListener(e -> cargarUsuarioEnFormulario(tablaActivos.getSeleccionado()));
         btnDesactivar.addActionListener(e -> {
-            FilaUsuario sel = tablaActivos.getSeleccionado();
-            if (sel != null) {
-                sel.activo = false;
-                refrescarTodo();
-                Toast.info(this, sel.nombres + " pasó a estado INACTIVO.");
+            Usuario sel = tablaActivos.getSeleccionado();
+            if (sel == null) {
+                DialogoConfirmacion.error(this, "Seleccione un usuario activo de la tabla superior.");
+                return;
+            }
+            try {
+                usuarioController.cambiarEstado(sel.getIdUsuario(), false);
+                recargarDesdeBD();
+                Toast.info(this, sel.getNombres() + " pasó a estado INACTIVO en BD.");
+            } catch (SQLException ex) {
+                DialogoConfirmacion.error(this, "Error al desactivar usuario: " + ex.getMessage());
             }
         });
 
         tablaActivos = new PanelTablaBase<>(
                 new String[]{"ID", "Nombres y Apellidos", "Correo", "Rol", "Grado/Sec.", "Estado"},
-                u -> new Object[]{u.id, u.nombres + " " + u.apellidos, u.correo, u.rol, u.grado + " " + u.seccion, "ACTIVO"}
+                u -> new Object[]{
+                    u.getIdUsuario(),
+                    u.getNombreCompleto(),
+                    u.getCorreo(),
+                    u.getRol(),
+                    (u.getGrado() == null ? "-" : u.getGrado()) + " " + (u.getSeccion() == null ? "-" : u.getSeccion()),
+                    "ACTIVO"
+                }
         );
         tablaActivos.ocultarFiltroFecha();
         cuadroActivos.add(topActivos, BorderLayout.NORTH);
@@ -295,14 +286,14 @@ public class PanelInicioAdmin extends JPanel {
         JPanel cuadroInactivos = new JPanel(new BorderLayout(0, Estilos.ESPACIO_CHICO));
         cuadroInactivos.setBackground(Estilos.FONDO_PANEL);
         cuadroInactivos.setBorder(Estilos.tarjeta());
-        
+
         JPanel cabInactivos = new JPanel(new FlowLayout(FlowLayout.RIGHT, Estilos.ESPACIO, 0));
         cabInactivos.setOpaque(false);
         JButton btnEditarInactivo = Estilos.botonSecundario("Editar Seleccionado");
         JButton btnReactivar = Estilos.botonPrimario("Reactivar Seleccionado");
         cabInactivos.add(btnEditarInactivo);
         cabInactivos.add(btnReactivar);
-        
+
         JPanel topInactivos = new JPanel(new BorderLayout());
         topInactivos.setOpaque(false);
         topInactivos.add(Estilos.subtitulo("USUARIOS Y ALUMNOS INACTIVOS"), BorderLayout.WEST);
@@ -310,17 +301,30 @@ public class PanelInicioAdmin extends JPanel {
 
         btnEditarInactivo.addActionListener(e -> cargarUsuarioEnFormulario(tablaInactivos.getSeleccionado()));
         btnReactivar.addActionListener(e -> {
-            FilaUsuario sel = tablaInactivos.getSeleccionado();
-            if (sel != null) {
-                sel.activo = true;
-                refrescarTodo();
-                Toast.exito(this, sel.nombres + " fue REACTIVADO.");
+            Usuario sel = tablaInactivos.getSeleccionado();
+            if (sel == null) {
+                DialogoConfirmacion.error(this, "Seleccione un usuario inactivo de la tabla inferior.");
+                return;
+            }
+            try {
+                usuarioController.cambiarEstado(sel.getIdUsuario(), true);
+                recargarDesdeBD();
+                Toast.exito(this, sel.getNombres() + " fue REACTIVADO en BD.");
+            } catch (SQLException ex) {
+                DialogoConfirmacion.error(this, "Error al reactivar usuario: " + ex.getMessage());
             }
         });
 
         tablaInactivos = new PanelTablaBase<>(
                 new String[]{"ID", "Nombres y Apellidos", "Correo", "Rol", "Grado/Sec.", "Estado"},
-                u -> new Object[]{u.id, u.nombres + " " + u.apellidos, u.correo, u.rol, u.grado + " " + u.seccion, "INACTIVO"}
+                u -> new Object[]{
+                    u.getIdUsuario(),
+                    u.getNombreCompleto(),
+                    u.getCorreo(),
+                    u.getRol(),
+                    (u.getGrado() == null ? "-" : u.getGrado()) + " " + (u.getSeccion() == null ? "-" : u.getSeccion()),
+                    "INACTIVO"
+                }
         );
         tablaInactivos.ocultarFiltroFecha();
         cuadroInactivos.add(topInactivos, BorderLayout.NORTH);
@@ -333,22 +337,31 @@ public class PanelInicioAdmin extends JPanel {
         return contenedor;
     }
 
-    private void cargarUsuarioEnFormulario(FilaUsuario sel) {
+    private void cargarUsuarioEnFormulario(Usuario sel) {
         if (sel == null) {
             DialogoConfirmacion.error(this, "Seleccione un usuario de la tabla para editar.");
             return;
         }
         usuarioEnEdicion = sel;
-        txtNombresU.setText(sel.nombres);
-        txtApellidosU.setText(sel.apellidos);
-        txtCorreoU.setText(sel.correo);
-        cboRolU.setSelectedItem(sel.rol);
-        txtGradoU.setText(sel.grado.equals("-") ? "" : sel.grado);
-        txtSeccionU.setText(sel.seccion.equals("-") ? "" : sel.seccion);
-        
+        txtNombresU.setText(sel.getNombres());
+        txtApellidosU.setText(sel.getApellidos());
+        txtCorreoU.setText(sel.getCorreo());
+        cboRolU.setSelectedItem(sel.getRol());
+        txtGradoU.setText(sel.getGrado() == null ? "" : sel.getGrado());
+        txtSeccionU.setText(sel.getSeccion() == null ? "" : sel.getSeccion());
+
+        for (int i = 0; i < cboPadreU.getItemCount(); i++) {
+            ItemComboUsuario item = cboPadreU.getItemAt(i);
+            if ((sel.getIdPadre() == null && item.id() == null)
+                    || (sel.getIdPadre() != null && sel.getIdPadre().equals(item.id()))) {
+                cboPadreU.setSelectedIndex(i);
+                break;
+            }
+        }
+
         btnGuardarUsuario.setText("Guardar Cambios");
         btnCancelarUsuario.setVisible(true);
-        txtClaveU.setEnabled(false); // No se edita la clave por aquí
+        txtClaveU.setEnabled(false);
     }
 
     private void limpiarFormularioUsuario() {
@@ -356,8 +369,8 @@ public class PanelInicioAdmin extends JPanel {
         txtNombresU.setText("");
         txtApellidosU.setText("");
         txtCorreoU.setText("");
-        txtGradoU.setText("");
-        txtSeccionU.setText("");
+        txtGradoU.setText("5.º");
+        txtSeccionU.setText("A");
         txtClaveU.setEnabled(true);
         btnGuardarUsuario.setText("Agregar Usuario");
         btnCancelarUsuario.setVisible(false);
@@ -368,15 +381,22 @@ public class PanelInicioAdmin extends JPanel {
         contenedor.setBackground(Estilos.FONDO);
         contenedor.setBorder(Estilos.margen());
 
-        // Cuadro Izquierdo: Autorizar recargas de los padres
         JPanel cuadroRecargas = new JPanel(new BorderLayout(0, Estilos.ESPACIO));
         cuadroRecargas.setBackground(Estilos.FONDO_PANEL);
         cuadroRecargas.setBorder(Estilos.tarjeta());
-        cuadroRecargas.add(Estilos.subtitulo("Solicitudes de Recarga de Padres"), BorderLayout.NORTH);
+        cuadroRecargas.add(Estilos.subtitulo("Solicitudes de Recarga de Padres (En vivo desde BD)"), BorderLayout.NORTH);
 
         tablaRecargas = new PanelTablaBase<>(
                 new String[]{"ID", "Fecha", "Padre", "Alumno", "Monto", "Método", "Estado"},
-                r -> new Object[]{r.id, Formato.fechaHora(r.fecha), r.padre, r.estudiante, Formato.dinero(r.monto), r.metodo, r.estado}
+                r -> new Object[]{
+                    r.idRecarga(),
+                    Formato.fechaHora(r.fecha()),
+                    r.nombrePadre(),
+                    r.nombreEstudiante(),
+                    Formato.dinero(r.monto()),
+                    r.metodo(),
+                    r.estado()
+                }
         );
         tablaRecargas.ocultarFiltroFecha();
         cuadroRecargas.add(tablaRecargas, BorderLayout.CENTER);
@@ -387,22 +407,35 @@ public class PanelInicioAdmin extends JPanel {
         JButton btnRechazar = Estilos.botonSecundario("Rechazar");
 
         btnAprobar.addActionListener(e -> {
-            FilaRecarga sel = tablaRecargas.getSeleccionado();
-            if (sel != null && sel.estado == EstadoRecarga.PENDIENTE) {
-                if (DialogoConfirmacion.confirmar(this, "Autorizar Recarga", "¿Aprobar recarga de " + Formato.dinero(sel.monto) + " para " + sel.estudiante + "?")) {
-                    sel.estado = EstadoRecarga.APROBADA;
-                    refrescarTodo();
-                    Toast.exito(this, "Recarga aprobada y acreditada al alumno.");
+            DetalleRecarga sel = tablaRecargas.getSeleccionado();
+            if (sel == null || sel.estado() != EstadoRecarga.PENDIENTE) {
+                DialogoConfirmacion.error(this, "Seleccione una recarga en estado PENDIENTE.");
+                return;
+            }
+            if (DialogoConfirmacion.confirmar(this, "Autorizar Recarga",
+                    "¿Aprobar recarga de " + Formato.dinero(sel.monto()) + " para " + sel.nombreEstudiante() + "?")) {
+                try {
+                    recargaDAO.aprobarRecarga(sel.idRecarga(), idAdminActual);
+                    recargarDesdeBD();
+                    Toast.exito(this, "Recarga aprobada y acreditada en la billetera del alumno.");
+                } catch (SQLException ex) {
+                    DialogoConfirmacion.error(this, "Error al aprobar recarga: " + ex.getMessage());
                 }
             }
         });
 
         btnRechazar.addActionListener(e -> {
-            FilaRecarga sel = tablaRecargas.getSeleccionado();
-            if (sel != null && sel.estado == EstadoRecarga.PENDIENTE) {
-                sel.estado = EstadoRecarga.RECHAZADA;
-                refrescarTodo();
-                Toast.info(this, "Recarga rechazada.");
+            DetalleRecarga sel = tablaRecargas.getSeleccionado();
+            if (sel == null || sel.estado() != EstadoRecarga.PENDIENTE) {
+                DialogoConfirmacion.error(this, "Seleccione una recarga en estado PENDIENTE.");
+                return;
+            }
+            try {
+                recargaDAO.rechazarRecarga(sel.idRecarga(), idAdminActual, "Rechazada por el administrador");
+                recargarDesdeBD();
+                Toast.info(this, "Recarga rechazada en BD.");
+            } catch (SQLException ex) {
+                DialogoConfirmacion.error(this, "Error al rechazar recarga: " + ex.getMessage());
             }
         });
 
@@ -410,7 +443,6 @@ public class PanelInicioAdmin extends JPanel {
         botonesRecarga.add(btnAprobar);
         cuadroRecargas.add(botonesRecarga, BorderLayout.SOUTH);
 
-        // Cuadro Derecho: Recargar monedas especiales a un alumno
         JPanel cuadroMonedas = new JPanel(new GridBagLayout());
         cuadroMonedas.setBackground(Estilos.FONDO_PANEL);
         cuadroMonedas.setBorder(Estilos.tarjeta());
@@ -431,10 +463,26 @@ public class PanelInicioAdmin extends JPanel {
 
         JButton btnDarMonedas = Estilos.botonPrimario("Acreditar Monedas Especiales");
         btnDarMonedas.addActionListener(e -> {
-            String alumno = (String) cboAlumnoMonedas.getSelectedItem();
+            ItemComboUsuario alumno = (ItemComboUsuario) cboAlumnoMonedas.getSelectedItem();
             int cant = (Integer) spnMonedas.getValue();
-            if (alumno != null && DialogoConfirmacion.confirmar(this, "Confirmar Monedas Especiales", "¿Acreditar " + cant + " monedas a " + alumno + "?")) {
-                Toast.exito(this, "Se acreditaron +" + cant + " monedas a " + alumno);
+            if (alumno == null || alumno.id() == null) {
+                return;
+            }
+            if (DialogoConfirmacion.confirmar(this, "Confirmar Monedas Especiales",
+                    "¿Acreditar " + cant + " monedas a " + alumno.etiqueta() + "?")) {
+                try {
+                    logroDAO.otorgarLogro(
+                            alumno.id(),
+                            idAdminActual,
+                            (String) cboMotivo.getSelectedItem(),
+                            txtDetalle.getText().trim(),
+                            cant
+                    );
+                    recargarDesdeBD();
+                    Toast.exito(this, "Se acreditaron +" + cant + " monedas en BD a " + alumno.etiqueta());
+                } catch (SQLException ex) {
+                    DialogoConfirmacion.error(this, "Error al acreditar monedas: " + ex.getMessage());
+                }
             }
         });
         agregarFilaForm(cuadroMonedas, f, "", btnDarMonedas, false);
@@ -449,7 +497,6 @@ public class PanelInicioAdmin extends JPanel {
         contenedor.setBackground(Estilos.FONDO);
         contenedor.setBorder(Estilos.margen());
 
-        // Cuadro Izquierdo: Formulario de Producto
         JPanel form = new JPanel(new GridBagLayout());
         form.setBackground(Estilos.FONDO_PANEL);
         form.setBorder(Estilos.tarjeta());
@@ -465,8 +512,12 @@ public class PanelInicioAdmin extends JPanel {
             BigDecimal pDinero = null;
             Integer pMonedas = null;
             try {
-                if (!txtPrecioSolesP.getText().isBlank()) pDinero = new BigDecimal(txtPrecioSolesP.getText().trim());
-                if (!txtPrecioMonedasP.getText().isBlank()) pMonedas = Integer.valueOf(txtPrecioMonedasP.getText().trim());
+                if (!txtPrecioSolesP.getText().isBlank()) {
+                    pDinero = new BigDecimal(txtPrecioSolesP.getText().trim());
+                }
+                if (!txtPrecioMonedasP.getText().isBlank()) {
+                    pMonedas = Integer.valueOf(txtPrecioMonedasP.getText().trim());
+                }
             } catch (NumberFormatException ex) {
                 DialogoConfirmacion.error(this, "Verifique los importes en Soles o Monedas.");
                 return;
@@ -475,22 +526,32 @@ public class PanelInicioAdmin extends JPanel {
                 DialogoConfirmacion.error(this, "Defina al menos un precio (Soles o Monedas).");
                 return;
             }
-            
-            if (productoEnEdicion == null) {
-                // Nuevo
-                productos.add(new FilaProducto(productos.size() + 1, txtNombreP.getText().trim(), txtDescP.getText().trim(), pDinero, pMonedas, (Integer) spnStockP.getValue(), true));
-                Toast.exito(this, "Producto agregado al catálogo.");
-            } else {
-                // Actualizar
-                productoEnEdicion.nombre = txtNombreP.getText().trim();
-                productoEnEdicion.descripcion = txtDescP.getText().trim();
-                productoEnEdicion.precioDinero = pDinero;
-                productoEnEdicion.precioMonedas = pMonedas;
-                productoEnEdicion.stock = (Integer) spnStockP.getValue();
-                Toast.exito(this, "Producto actualizado con éxito.");
+
+            try {
+                if (productoEnEdicion == null) {
+                    Producto nuevo = new Producto();
+                    nuevo.setNombre(txtNombreP.getText().trim());
+                    nuevo.setDescripcion(txtDescP.getText().trim());
+                    nuevo.setPrecioDinero(pDinero);
+                    nuevo.setPrecioMonedas(pMonedas);
+                    nuevo.setStock((Integer) spnStockP.getValue());
+                    nuevo.setActivo(true);
+                    productoDAO.insertar(nuevo);
+                    Toast.exito(this, "Producto agregado a SQL Server.");
+                } else {
+                    productoEnEdicion.setNombre(txtNombreP.getText().trim());
+                    productoEnEdicion.setDescripcion(txtDescP.getText().trim());
+                    productoEnEdicion.setPrecioDinero(pDinero);
+                    productoEnEdicion.setPrecioMonedas(pMonedas);
+                    productoEnEdicion.setStock((Integer) spnStockP.getValue());
+                    productoDAO.actualizar(productoEnEdicion);
+                    Toast.exito(this, "Producto actualizado en SQL Server.");
+                }
+                limpiarFormularioProducto();
+                recargarDesdeBD();
+            } catch (SQLException ex) {
+                DialogoConfirmacion.error(this, "Error al guardar producto: " + ex.getMessage());
             }
-            limpiarFormularioProducto();
-            refrescarTodo();
         });
 
         JPanel panelBotones = new JPanel(new FlowLayout(FlowLayout.LEFT, Estilos.ESPACIO_CHICO, 0));
@@ -507,14 +568,21 @@ public class PanelInicioAdmin extends JPanel {
         agregarFilaForm(form, f++, "Stock Actual:", spnStockP, false);
         agregarFilaForm(form, f, "", panelBotones, false);
 
-        // Cuadro Derecho: Tabla
         JPanel cuadroTabla = new JPanel(new BorderLayout(0, Estilos.ESPACIO));
         cuadroTabla.setBackground(Estilos.FONDO_PANEL);
         cuadroTabla.setBorder(Estilos.tarjeta());
 
         tablaProductos = new PanelTablaBase<>(
-                new String[]{"ID", "Producto", "Precio S/", "Precio Monedas", "Stock", "Estado / Aviso"},
-                p -> new Object[]{p.id, p.nombre, p.precioDinero == null ? "-" : Formato.dinero(p.precioDinero), p.precioMonedas == null ? "-" : Formato.monedas(p.precioMonedas), p.stock, p.alertaStock()}
+                new String[]{"ID", "Producto", "Descripción", "Precio S/", "Precio Monedas", "Stock", "Estado / Aviso"},
+                p -> new Object[]{
+                    p.getIdProducto(),
+                    p.getNombre(),
+                    p.getDescripcion() == null ? "" : p.getDescripcion(),
+                    p.getPrecioDinero() == null ? "-" : Formato.dinero(p.getPrecioDinero()),
+                    p.getPrecioMonedas() == null ? "-" : Formato.monedas(p.getPrecioMonedas()),
+                    p.getStock(),
+                    alertaStock(p)
+                }
         );
         tablaProductos.ocultarFiltroFecha();
         cuadroTabla.add(tablaProductos, BorderLayout.CENTER);
@@ -523,36 +591,51 @@ public class PanelInicioAdmin extends JPanel {
         accionesProd.setOpaque(false);
 
         JButton btnEditar = Estilos.botonSecundario("Editar Producto");
-        JButton btnSimularCompra = Estilos.botonSecundario("Simular Compra (-1)");
+        JButton btnSimularCompra = Estilos.botonSecundario("Descontar Stock (-1)");
         JButton btnReponer = Estilos.botonPrimario("Reponer Stock (+10)");
         JButton btnEliminar = Estilos.botonSecundario("Dar de Baja");
 
         btnEditar.addActionListener(e -> cargarProductoEnFormulario(tablaProductos.getSeleccionado()));
-        
+
         btnSimularCompra.addActionListener(e -> {
-            FilaProducto sel = tablaProductos.getSeleccionado();
-            if (sel != null && sel.stock > 0) {
-                sel.stock--;
-                refrescarTodo();
-                if (sel.stock <= 10) Toast.error(this, "⚠ Aviso: Stock bajo de '" + sel.nombre + "'.");
+            Producto sel = tablaProductos.getSeleccionado();
+            if (sel != null && sel.getStock() > 0) {
+                try {
+                    int nuevoStock = sel.getStock() - 1;
+                    productoDAO.actualizarStock(sel.getIdProducto(), nuevoStock);
+                    recargarDesdeBD();
+                    if (nuevoStock <= 10) {
+                        Toast.error(this, "⚠ Aviso: Stock bajo de '" + sel.getNombre() + "'.");
+                    }
+                } catch (SQLException ex) {
+                    DialogoConfirmacion.error(this, "Error al descontar stock: " + ex.getMessage());
+                }
             }
         });
 
         btnReponer.addActionListener(e -> {
-            FilaProducto sel = tablaProductos.getSeleccionado();
+            Producto sel = tablaProductos.getSeleccionado();
             if (sel != null) {
-                sel.stock += 10;
-                refrescarTodo();
-                Toast.exito(this, "Repuestos +10 de " + sel.nombre);
+                try {
+                    productoDAO.actualizarStock(sel.getIdProducto(), sel.getStock() + 10);
+                    recargarDesdeBD();
+                    Toast.exito(this, "Repuestos +10 de " + sel.getNombre() + " en BD.");
+                } catch (SQLException ex) {
+                    DialogoConfirmacion.error(this, "Error al reponer stock: " + ex.getMessage());
+                }
             }
         });
 
         btnEliminar.addActionListener(e -> {
-            FilaProducto sel = tablaProductos.getSeleccionado();
-            if (sel != null && DialogoConfirmacion.confirmar(this, "Eliminar", "¿Dar de baja '" + sel.nombre + "'?")) {
-                sel.activo = false;
-                refrescarTodo();
-                Toast.info(this, "Producto dado de baja.");
+            Producto sel = tablaProductos.getSeleccionado();
+            if (sel != null && DialogoConfirmacion.confirmar(this, "Dar de Baja", "¿Dar de baja '" + sel.getNombre() + "'?")) {
+                try {
+                    productoDAO.cambiarEstado(sel.getIdProducto(), false);
+                    recargarDesdeBD();
+                    Toast.info(this, "Producto dado de baja en BD.");
+                } catch (SQLException ex) {
+                    DialogoConfirmacion.error(this, "Error al dar de baja: " + ex.getMessage());
+                }
             }
         });
 
@@ -567,18 +650,31 @@ public class PanelInicioAdmin extends JPanel {
         return contenedor;
     }
 
-    private void cargarProductoEnFormulario(FilaProducto sel) {
+    private String alertaStock(Producto p) {
+        if (!p.isActivo()) {
+            return "INACTIVO";
+        }
+        if (p.getStock() == 0) {
+            return "AGOTADO - REPONER";
+        }
+        if (p.getStock() <= 10) {
+            return "⚠ BAJO STOCK (Reponer)";
+        }
+        return "OK";
+    }
+
+    private void cargarProductoEnFormulario(Producto sel) {
         if (sel == null) {
             DialogoConfirmacion.error(this, "Seleccione un producto para editar.");
             return;
         }
         productoEnEdicion = sel;
-        txtNombreP.setText(sel.nombre);
-        txtDescP.setText(sel.descripcion);
-        txtPrecioSolesP.setText(sel.precioDinero != null ? sel.precioDinero.toString() : "");
-        txtPrecioMonedasP.setText(sel.precioMonedas != null ? sel.precioMonedas.toString() : "");
-        spnStockP.setValue(sel.stock);
-        
+        txtNombreP.setText(sel.getNombre());
+        txtDescP.setText(sel.getDescripcion() == null ? "" : sel.getDescripcion());
+        txtPrecioSolesP.setText(sel.getPrecioDinero() != null ? sel.getPrecioDinero().toString() : "");
+        txtPrecioMonedasP.setText(sel.getPrecioMonedas() != null ? sel.getPrecioMonedas().toString() : "");
+        spnStockP.setValue(sel.getStock());
+
         btnGuardarProducto.setText("Actualizar Producto");
         btnCancelarProducto.setVisible(true);
     }
@@ -600,49 +696,58 @@ public class PanelInicioAdmin extends JPanel {
         c.anchor = GridBagConstraints.LINE_START;
         c.fill = GridBagConstraints.HORIZONTAL;
         if (esTitulo) {
-            c.gridx = 0; c.gridy = fila; c.gridwidth = 2;
+            c.gridx = 0;
+            c.gridy = fila;
+            c.gridwidth = 2;
             panel.add(Estilos.subtitulo(etiqueta), c);
             return;
         }
-        c.gridx = 0; c.gridy = fila; panel.add(Estilos.etiqueta(etiqueta), c);
-        c.gridx = 1; c.weightx = 1.0; panel.add(campo, c);
+        c.gridx = 0;
+        c.gridy = fila;
+        panel.add(Estilos.etiqueta(etiqueta), c);
+        c.gridx = 1;
+        c.weightx = 1.0;
+        panel.add(campo, c);
     }
 
-    private void cargarDatosIniciales() {
-        usuarios.add(new FilaUsuario(1, "Ana María", "Salazar Ríos", "admin@colegio.edu", Rol.ADMIN, "-", "-", true));
-        usuarios.add(new FilaUsuario(2, "Rosa Elena", "Quispe Huamán", "docente@colegio.edu", Rol.DOCENTE, "-", "-", true));
-        usuarios.add(new FilaUsuario(3, "Miguel Ángel", "Torres Vega", "padre1@correo.com", Rol.PADRE, "-", "-", true));
-        usuarios.add(new FilaUsuario(5, "Luis Fernando", "Torres Ramos", "estudiante1@colegio.edu", Rol.ESTUDIANTE, "5.º", "A", true));
-        usuarios.add(new FilaUsuario(6, "Carla Sofía", "Torres Ramos", "estudiante2@colegio.edu", Rol.ESTUDIANTE, "5.º", "A", true));
-        usuarios.add(new FilaUsuario(8, "Mateo Sebastián", "Gómez Díaz", "estudiante4@colegio.edu", Rol.ESTUDIANTE, "3.º", "C", false));
+    private void recargarDesdeBD() {
+        usuarios = usuarioController.obtenerTodosLosUsuarios();
+        try {
+            recargas = recargaDAO.listarTodas();
+        } catch (SQLException e) {
+            System.err.println("Error al cargar recargas de BD: " + e.getMessage());
+            recargas = new ArrayList<>();
+        }
+        try {
+            productos = productoDAO.listarTodos();
+        } catch (SQLException e) {
+            System.err.println("Error al cargar productos de BD: " + e.getMessage());
+            productos = new ArrayList<>();
+        }
 
-        LocalDateTime ahora = LocalDateTime.now();
-        recargas.add(new FilaRecarga(1, "Miguel Ángel Torres", "Luis Fernando Torres", new BigDecimal("58.50"), MetodoPago.YAPE, EstadoRecarga.APROBADA, ahora.minusDays(10)));
-        recargas.add(new FilaRecarga(3, "Ana Lucía Ramos", "Carla Sofía Torres", new BigDecimal("30.00"), MetodoPago.EFECTIVO, EstadoRecarga.PENDIENTE, ahora.minusDays(1)));
-
-        productos.add(new FilaProducto(1, "Menú del día", "Almuerzo completo del comedor", new BigDecimal("8.50"), null, 40, true));
-        productos.add(new FilaProducto(5, "Cuaderno A4", "Cuaderno anillado 100 hojas", new BigDecimal("7.50"), null, 15, true));
-        productos.add(new FilaProducto(6, "Pase libre de uniforme", "Un día sin uniforme", null, 80, 10, true));
-        productos.add(new FilaProducto(8, "Gorra del colegio", "Gorra oficial institucional", null, 100, 5, true));
-    }
-
-    private void refrescarTodo() {
-        List<FilaUsuario> listaActivos = usuarios.stream().filter(u -> u.activo).toList();
-        List<FilaUsuario> listaInactivos = usuarios.stream().filter(u -> !u.activo).toList();
+        List<Usuario> listaActivos = usuarios.stream().filter(Usuario::isEstado).toList();
+        List<Usuario> listaInactivos = usuarios.stream().filter(u -> !u.isEstado()).toList();
         tablaActivos.setDatos(listaActivos);
         tablaInactivos.setDatos(listaInactivos);
         tablaRecargas.setDatos(recargas);
-        tablaProductos.setDatos(productos.stream().filter(p -> p.activo).toList());
+        tablaProductos.setDatos(productos.stream().filter(Producto::isActivo).toList());
 
         cboAlumnoMonedas.removeAllItems();
-        for (FilaUsuario u : listaActivos) {
-            if (u.rol == Rol.ESTUDIANTE) cboAlumnoMonedas.addItem(u.nombres + " " + u.apellidos + " (" + u.grado + " " + u.seccion + ")");
+        cboPadreU.removeAllItems();
+        cboPadreU.addItem(new ItemComboUsuario(null, "Sin padre asignado"));
+
+        for (Usuario u : listaActivos) {
+            if (u.getRol() == Rol.ESTUDIANTE) {
+                String gradoSec = (u.getGrado() == null ? "-" : u.getGrado()) + " " + (u.getSeccion() == null ? "-" : u.getSeccion());
+                cboAlumnoMonedas.addItem(new ItemComboUsuario(u.getIdUsuario(), u.getNombreCompleto() + " (" + gradoSec + ")"));
+            } else if (u.getRol() == Rol.PADRE) {
+                cboPadreU.addItem(new ItemComboUsuario(u.getIdUsuario(), u.getNombreCompleto()));
+            }
         }
 
         lblKpiActivos.setText(String.valueOf(listaActivos.size()));
         lblKpiInactivos.setText(String.valueOf(listaInactivos.size()));
-        lblKpiRecargas.setText(String.valueOf(recargas.stream().filter(r -> r.estado == EstadoRecarga.PENDIENTE).count()));
-        lblKpiStockBajo.setText(String.valueOf(productos.stream().filter(p -> p.activo && p.stock <= 10).count()));
+        lblKpiRecargas.setText(String.valueOf(recargas.stream().filter(r -> r.estado() == EstadoRecarga.PENDIENTE).count()));
+        lblKpiStockBajo.setText(String.valueOf(productos.stream().filter(p -> p.isActivo() && p.getStock() <= 10).count()));
     }
-
 }

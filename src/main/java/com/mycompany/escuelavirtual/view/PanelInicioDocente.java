@@ -4,6 +4,13 @@
  */
 package com.mycompany.escuelavirtual.view;
 
+import com.mycompany.escuelavirtual.controller.UsuarioController;
+import com.mycompany.escuelavirtual.dao.BilleteraDAO;
+import com.mycompany.escuelavirtual.dao.LogroDAO;
+import com.mycompany.escuelavirtual.dao.LogroDAO.DetalleLogro;
+import com.mycompany.escuelavirtual.model.Billetera;
+import com.mycompany.escuelavirtual.model.Usuario;
+import com.mycompany.escuelavirtual.model.enums.Rol;
 import com.mycompany.escuelavirtual.util.Formato;
 import com.mycompany.escuelavirtual.util.Validador;
 import com.mycompany.escuelavirtual.util.ui.DialogoConfirmacion;
@@ -15,7 +22,7 @@ import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.GridLayout;
 import java.awt.Insets;
-import java.time.LocalDateTime;
+import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
 import javax.swing.JButton;
@@ -46,48 +53,40 @@ public class PanelInicioDocente extends JPanel {
             this.seccion = seccion;
             this.monedasAcumuladas = monedasAcumuladas;
         }
-    }
 
-    private static class RegistroLogro {
-
-        int id, monedas;
-        String estudiante, tipo, descripcion;
-        LocalDateTime fecha;
-
-        RegistroLogro(int id, String estudiante, String tipo, String descripcion, int monedas, LocalDateTime fecha) {
-            this.id = id;
-            this.estudiante = estudiante;
-            this.tipo = tipo;
-            this.descripcion = descripcion;
-            this.monedas = monedas;
-            this.fecha = fecha;
+        @Override
+        public String toString() {
+            return nombreCompleto + " (" + grado + " " + seccion + ")";
         }
     }
 
+    private final UsuarioController usuarioController = new UsuarioController();
+    private final BilleteraDAO billeteraDAO = new BilleteraDAO();
+    private final LogroDAO logroDAO = new LogroDAO();
+    private final Usuario docenteActual;
+
     private final List<AlumnoAula> alumnos = new ArrayList<>();
-    private final List<RegistroLogro> logrosOtorgados = new ArrayList<>();
 
     private PanelTablaBase<AlumnoAula> tablaAlumnos;
-    private PanelTablaBase<RegistroLogro> tablaLogros;
-    private final JComboBox<String> cboEstudiante = new JComboBox<>();
+    private PanelTablaBase<DetalleLogro> tablaLogros;
+    private final JComboBox<AlumnoAula> cboEstudiante = new JComboBox<>();
 
-    public PanelInicioDocente() {
+    public PanelInicioDocente(Usuario docenteActual) {
+        this.docenteActual = docenteActual;
+
         setLayout(new BorderLayout(0, Estilos.ESPACIO));
         setBackground(Estilos.FONDO);
         setBorder(Estilos.margen());
 
-        cargarDatosDocente();
-
-        add(Estilos.titulo("Panel Docente - Gestión de Logros e Incentivos Estudiantiles"), BorderLayout.NORTH);
+        add(Estilos.titulo("Panel Docente - Gestión de Logros e Incentivos (BD)"), BorderLayout.NORTH);
 
         JPanel cuerpo = new JPanel(new BorderLayout(Estilos.ESPACIO_GRANDE, 0));
         cuerpo.setOpaque(false);
-
         cuerpo.add(crearCuadroOtorgarLogro(), BorderLayout.WEST);
         cuerpo.add(crearCuadrosDerechos(), BorderLayout.CENTER);
-
         add(cuerpo, BorderLayout.CENTER);
-        refrescarTablas();
+
+        recargarDesdeBD();
     }
 
     private JPanel crearCuadroOtorgarLogro() {
@@ -95,48 +94,34 @@ public class PanelInicioDocente extends JPanel {
         form.setBackground(Estilos.FONDO_PANEL);
         form.setBorder(Estilos.tarjeta());
 
-        for (AlumnoAula a : alumnos) {
-            cboEstudiante.addItem(a.nombreCompleto + " (" + a.grado + " " + a.seccion + ")");
-        }
-
         JComboBox<String> cboTipoMerito = new JComboBox<>(new String[]{
-            "Participación en clase",
-            "Puntualidad",
-            "Mejor promedio del bimestre",
-            "Convivencia ejemplar",
-            "Buen rendimiento académico",
-            "Buen comportamiento en aula"
+            "Participación en clase", "Puntualidad", "Mejor promedio del bimestre", "Convivencia ejemplar", "Buen rendimiento académico", "Buen comportamiento en aula"
         });
         JTextField txtDescripcion = new JTextField("Destacado desempeño durante la sesión", 16);
         JSpinner spnMonedas = new JSpinner(new SpinnerNumberModel(15, 5, 200, 5));
         JButton btnOtorgar = Estilos.botonPrimario("Otorgar Monedas por Mérito");
 
         btnOtorgar.addActionListener(e -> {
-            int idx = cboEstudiante.getSelectedIndex();
-            if (idx < 0) {
+            AlumnoAula alumno = (AlumnoAula) cboEstudiante.getSelectedItem();
+            if (alumno == null) {
                 return;
             }
             if (!Validador.esTextoValido(txtDescripcion.getText())) {
                 DialogoConfirmacion.error(this, "Ingrese una breve descripción del mérito.");
                 return;
             }
-            AlumnoAula alumno = alumnos.get(idx);
             String tipo = (String) cboTipoMerito.getSelectedItem();
             int monedas = (Integer) spnMonedas.getValue();
 
-            if (DialogoConfirmacion.confirmar(this, "Confirmar Incentivo",
-                    "¿Otorgar +" + monedas + " monedas a " + alumno.nombreCompleto + " por '" + tipo + "'?")) {
-                alumno.monedasAcumuladas += monedas;
-                logrosOtorgados.add(0, new RegistroLogro(
-                        logrosOtorgados.size() + 1,
-                        alumno.nombreCompleto,
-                        tipo,
-                        txtDescripcion.getText().trim(),
-                        monedas,
-                        LocalDateTime.now()
-                ));
-                refrescarTablas();
-                Toast.exito(this, "¡Se otorgaron +" + monedas + " monedas a " + alumno.nombreCompleto + "!");
+            if (DialogoConfirmacion.confirmar(this, "Confirmar Incentivo", "¿Otorgar +" + monedas + " monedas a " + alumno.nombreCompleto + " por '" + tipo + "'?")) {
+                try {
+                    int idDocente = docenteActual != null ? docenteActual.getIdUsuario() : 0;
+                    logroDAO.otorgarLogro(alumno.id, idDocente, tipo, txtDescripcion.getText().trim(), monedas);
+                    recargarDesdeBD();
+                    Toast.exito(this, "¡Se otorgaron +" + monedas + " monedas a " + alumno.nombreCompleto + " en BD!");
+                } catch (SQLException ex) {
+                    DialogoConfirmacion.error(this, "Error al otorgar logro en BD: " + ex.getMessage());
+                }
             }
         });
 
@@ -155,11 +140,10 @@ public class PanelInicioDocente extends JPanel {
         JPanel derecha = new JPanel(new GridLayout(2, 1, 0, Estilos.ESPACIO));
         derecha.setOpaque(false);
 
-        // Cuadro Superior: Estudiantes a cargo y sus monedas
         JPanel cuadroAlumnos = new JPanel(new BorderLayout(0, Estilos.ESPACIO_CHICO));
         cuadroAlumnos.setBackground(Estilos.FONDO_PANEL);
         cuadroAlumnos.setBorder(Estilos.tarjeta());
-        cuadroAlumnos.add(Estilos.subtitulo("2. Estudiantes a Cargo y Saldo Actual de Monedas"), BorderLayout.NORTH);
+        cuadroAlumnos.add(Estilos.subtitulo("2. Estudiantes y Saldo de Monedas (BD)"), BorderLayout.NORTH);
 
         tablaAlumnos = new PanelTablaBase<>(
                 new String[]{"ID", "Estudiante", "Grado", "Sección", "Monedas Acumuladas"},
@@ -168,15 +152,14 @@ public class PanelInicioDocente extends JPanel {
         tablaAlumnos.ocultarFiltroFecha();
         cuadroAlumnos.add(tablaAlumnos, BorderLayout.CENTER);
 
-        // Cuadro Inferior: Historial de logros registrados
         JPanel cuadroHistorial = new JPanel(new BorderLayout(0, Estilos.ESPACIO_CHICO));
         cuadroHistorial.setBackground(Estilos.FONDO_PANEL);
         cuadroHistorial.setBorder(Estilos.tarjeta());
-        cuadroHistorial.add(Estilos.subtitulo("3. Historial de Logros y Méritos Otorgados"), BorderLayout.NORTH);
+        cuadroHistorial.add(Estilos.subtitulo("3. Historial Global de Logros (BD)"), BorderLayout.NORTH);
 
         tablaLogros = new PanelTablaBase<>(
                 new String[]{"ID", "Fecha", "Estudiante", "Tipo de Mérito", "Descripción", "Monedas"},
-                l -> new Object[]{l.id, Formato.fechaHora(l.fecha), l.estudiante, l.tipo, l.descripcion, "+" + Formato.monedas(l.monedas)}
+                l -> new Object[]{l.idLogro(), Formato.fechaHora(l.fecha()), l.nombreEstudiante(), l.tipo(), l.descripcion(), "+" + Formato.monedas(l.monedas())}
         );
         tablaLogros.ocultarFiltroFecha();
         cuadroHistorial.add(tablaLogros, BorderLayout.CENTER);
@@ -206,21 +189,21 @@ public class PanelInicioDocente extends JPanel {
         panel.add(campo, c);
     }
 
-    private void cargarDatosDocente() {
-        alumnos.add(new AlumnoAula(5, "Luis Fernando Torres Ramos", "5.º", "A", 120));
-        alumnos.add(new AlumnoAula(6, "Carla Sofía Torres Ramos", "5.º", "A", 80));
-        alumnos.add(new AlumnoAula(7, "Diego Alonso Ramos Flores", "4.º", "B", 45));
-
-        LocalDateTime ahora = LocalDateTime.now();
-        logrosOtorgados.add(new RegistroLogro(1, "Luis Fernando Torres Ramos", "Participación en clase", "Aportes voluntarios durante la semana de repaso.", 10, ahora.minusDays(6)));
-        logrosOtorgados.add(new RegistroLogro(2, "Luis Fernando Torres Ramos", "Puntualidad", "Asistió a tiempo todos los días del mes.", 5, ahora.minusDays(4)));
-        logrosOtorgados.add(new RegistroLogro(3, "Carla Sofía Torres Ramos", "Mejor promedio del bimestre", "Promedio destacado en el área de Matemática.", 50, ahora.minusDays(3)));
-        logrosOtorgados.add(new RegistroLogro(4, "Diego Alonso Ramos Flores", "Convivencia ejemplar", "Medió un conflicto entre compañeros de su aula.", 15, ahora.minusDays(2)));
+    private void recargarDesdeBD() {
+        try {
+            alumnos.clear();
+            cboEstudiante.removeAllItems();
+            List<Usuario> estudiantes = usuarioController.obtenerPorRol(Rol.ESTUDIANTE);
+            for (Usuario e : estudiantes) {
+                Billetera b = billeteraDAO.obtenerOCrearPorEstudiante(e.getIdUsuario());
+                AlumnoAula aula = new AlumnoAula(e.getIdUsuario(), e.getNombreCompleto(), e.getGrado() == null ? "-" : e.getGrado(), e.getSeccion() == null ? "-" : e.getSeccion(), b.getSaldoMonedas());
+                alumnos.add(aula);
+                cboEstudiante.addItem(aula);
+            }
+            tablaAlumnos.setDatos(alumnos);
+            tablaLogros.setDatos(logroDAO.listarTodos());
+        } catch (SQLException e) {
+            DialogoConfirmacion.error(this, "Error listando BD: " + e.getMessage());
+        }
     }
-
-    private void refrescarTablas() {
-        tablaAlumnos.setDatos(alumnos);
-        tablaLogros.setDatos(logrosOtorgados);
-    }
-
 }

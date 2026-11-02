@@ -43,24 +43,19 @@ public class MainFrame extends JFrame {
 
         centro.setBackground(Estilos.FONDO);
         
-        // Evaluar el rol del usuario conectado para inyectar el panel inicial correcto
+        // Se inyecta el usuario a cada panel para que filtren la BD
         JPanel panelInicio = switch (usuario.getRol()) {
-            case ADMIN -> new PanelInicioAdmin();
-            case ESTUDIANTE -> new PanelInicioEstudiante();
-            case PADRE -> new PanelInicioPadre();
-            case DOCENTE -> new PanelInicioDocente();
+            case ADMIN -> new PanelInicioAdmin(usuario);
+            case ESTUDIANTE -> new PanelInicioEstudiante(usuario);
+            case PADRE -> new PanelInicioPadre(usuario);
+            case DOCENTE -> new PanelInicioDocente(usuario);
         };
 
-        // 1. Agregamos el panel al contenedor
         centro.add(panelInicio, "inicio");
-        
-        // 2. FORZAMOS al CardLayout a que muestre el panel que acabamos de agregar
         CardLayout layout = (CardLayout) centro.getLayout();
         layout.show(centro, "inicio");
 
-        // 3. Agregamos el centro a la ventana
         add(centro, BorderLayout.CENTER);
-
         add(crearBarraEstado(usuario), BorderLayout.SOUTH);
 
         setDefaultCloseOperation(WindowConstants.EXIT_ON_CLOSE);
