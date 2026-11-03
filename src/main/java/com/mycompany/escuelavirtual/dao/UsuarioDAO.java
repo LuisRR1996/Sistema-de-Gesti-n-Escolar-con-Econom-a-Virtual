@@ -6,8 +6,12 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Statement;
 import java.sql.Timestamp;
+import java.sql.Types;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Acceso a la tabla {@code usuarios}. Solo lee y escribe filas: las reglas de
@@ -42,6 +46,147 @@ public class UsuarioDAO extends BaseDAO {
      *
      * @return {@code true} si la cuenta quedó bloqueada con este intento
      */
+    
+    public List<Usuario> listarTodos() throws SQLException {
+        String sql = "SELECT " + COLUMNAS + " FROM usuarios ORDER BY id_usuario";
+        List<Usuario> lista = new ArrayList<>();
+        try (Connection cn = connection(); PreparedStatement ps = cn.prepareStatement(sql); ResultSet rs = ps.executeQuery()) {
+            while (rs.next()) {
+                lista.add(mapear(rs));
+            }
+        }
+        return lista;
+    }
+
+    public List<Usuario> listarPorRol(Rol rol) throws SQLException {
+        String sql = "SELECT " + COLUMNAS + " FROM usuarios WHERE rol = ? AND estado = 1 ORDER BY id_usuario";
+        List<Usuario> lista = new ArrayList<>();
+        try (Connection cn = connection(); PreparedStatement ps = cn.prepareStatement(sql)) {
+            ps.setString(1, rol.name());
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    lista.add(mapear(rs));
+                }
+            }
+        }
+        return lista;
+    }
+
+    public List<Usuario> listarHijosPorPadre(int idPadre) throws SQLException {
+        String sql = "SELECT " + COLUMNAS + " FROM usuarios WHERE rol = 'ESTUDIANTE' AND id_padre = ? AND estado = 1 ORDER BY id_usuario";
+        List<Usuario> lista = new ArrayList<>();
+        try (Connection cn = connection(); PreparedStatement ps = cn.prepareStatement(sql)) {
+            ps.setInt(1, idPadre);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    lista.add(mapear(rs));
+                }
+            }
+        }
+        return lista;
+    }
+
+    public Usuario insertar(Usuario u) throws SQLException {
+        String sql = """
+                INSERT INTO usuarios (nombres, apellidos, correo, password_hash, rol, grado, seccion, id_padre, estado)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""";
+        try (Connection cn = connection(); PreparedStatement ps = cn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
+            ps.setString(1, u.getNombres().trim());
+            ps.setString(2, u.getApellidos().trim());
+            ps.setString(3, u.getCorreo().trim().toLowerCase());
+            ps.setString(4, u.getPasswordHash());
+            ps.setString(5, u.getRol().name());
+            if (u.getRol() == Rol.ESTUDIANTE && u.getGrado() != null && !u.getGrado().isBlank()) {
+                ps.setString(6, u.getGrado().trim());
+            } else {
+                ps.setNull(6, Types.NVARCHAR);
+            }
+            if (u.getRol() == Rol.ESTUDIANTE && u.getSeccion() != null && !u.getSeccion().isBlank()) {
+                ps.setString(7, u.getSeccion().trim());
+            } else {
+                ps.setNull(7, Types.NVARCHAR);
+            }
+            if (u.getRol() == Rol.ESTUDIANTE && u.getIdPadre() != null && u.getIdPadre() > 0) {
+                ps.setInt(8, u.getIdPadre());
+            } else {
+                ps.setNull(8, Types.INTEGER);
+            }
+            ps.setBoolean(9, u.isEstado());
+            ps.executeUpdate();
+
+            try (ResultSet keys = ps.getGeneratedKeys()) {
+                if (keys.next()) {
+                    u.setIdUsuario(keys.getInt(1));
+                }
+            }
+            if (u.getRol() == Rol.ESTUDIANTE && u.getIdUsuario() != null) {
+                asegurarBilletera(cn, u.getIdUsuario());
+            }
+        }
+        return u;
+    }
+
+    public void actualizar(Usuario u) throws SQLException {
+        String sql = """
+                UPDATE usuarios
+                   SET nombres = ?, apellidos = ?, correo = ?, rol = ?, grado = ?, seccion = ?, id_padre = ?, estado = ?
+                 WHERE id_usuario = ?""";
+        try (Connection cn = connection(); PreparedStatement ps = cn.prepareStatement(sql)) {
+            ps.setString(1, u.getNombres().trim());
+            ps.setString(2, u.getApellidos().trim());
+            ps.setString(3, u.getCorreo().trim().toLowerCase());
+            ps.setString(4, u.getRol().name());
+            if (u.getRol() == Rol.ESTUDIANTE && u.getGrado() != null && !u.getGrado().isBlank()) {
+                ps.setString(5, u.getGrado().trim());
+            } else {
+                ps.setNull(5, Types.NVARCHAR);
+            }
+            if (u.getRol() == Rol.ESTUDIANTE && u.getSeccion() != null && !u.getSeccion().isBlank()) {
+                ps.setString(6, u.getSeccion().trim());
+            } else {
+                ps.setNull(6, Types.NVARCHAR);
+            }
+            if (u.getRol() == Rol.ESTUDIANTE && u.getIdPadre() != null && u.getIdPadre() > 0) {
+                ps.setInt(7, u.getIdPadre());
+            } else {
+                ps.setNull(7, Types.INTEGER);
+            }
+            ps.setBoolean(8, u.isEstado());
+            ps.setInt(9, u.getIdUsuario());
+            ps.executeUpdate();
+
+            if (u.getRol() == Rol.ESTUDIANTE) {
+                asegurarBilletera(cn, u.getIdUsuario());
+            }
+        }
+    }
+
+    public void cambiarEstado(int idUsuario, boolean activo) throws SQLException {
+        String sql = "UPDATE usuarios SET estado = ? WHERE id_usuario = ?";
+        try (Connection cn = connection(); PreparedStatement ps = cn.prepareStatement(sql)) {
+            ps.setBoolean(1, activo);
+            ps.setInt(2, idUsuario);
+            ps.executeUpdate();
+        }
+    }
+
+    private void asegurarBilletera(Connection cn, int idEstudiante) throws SQLException {
+        String check = "SELECT 1 FROM billeteras WHERE id_estudiante = ?";
+        try (PreparedStatement ps = cn.prepareStatement(check)) {
+            ps.setInt(1, idEstudiante);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    return;
+                }
+            }
+        }
+        String ins = "INSERT INTO billeteras (id_estudiante, saldo_dinero, saldo_monedas) VALUES (?, 0.00, 0)";
+        try (PreparedStatement ps = cn.prepareStatement(ins)) {
+            ps.setInt(1, idEstudiante);
+            ps.executeUpdate();
+        }
+    }
+    
     public boolean registrarIntentoFallido(int idUsuario, int maxIntentos, int minutosBloqueo)
             throws SQLException {
         String sql = """

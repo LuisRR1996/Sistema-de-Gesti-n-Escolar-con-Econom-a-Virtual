@@ -4,7 +4,15 @@
  */
 package com.mycompany.escuelavirtual.view;
 
+import com.mycompany.escuelavirtual.controller.UsuarioController;
+import com.mycompany.escuelavirtual.dao.BilleteraDAO;
+import com.mycompany.escuelavirtual.dao.MovimientoDAO;
+import com.mycompany.escuelavirtual.dao.MovimientoDAO.DetalleMovimiento;
+import com.mycompany.escuelavirtual.dao.RecargaDAO;
+import com.mycompany.escuelavirtual.model.Billetera;
+import com.mycompany.escuelavirtual.model.Usuario;
 import com.mycompany.escuelavirtual.model.enums.MetodoPago;
+import com.mycompany.escuelavirtual.model.enums.TipoMoneda;
 import com.mycompany.escuelavirtual.util.Formato;
 import com.mycompany.escuelavirtual.util.Validador;
 import com.mycompany.escuelavirtual.util.ui.DialogoConfirmacion;
@@ -17,6 +25,7 @@ import java.awt.GridBagLayout;
 import java.awt.GridLayout;
 import java.awt.Insets;
 import java.math.BigDecimal;
+import java.sql.SQLException;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -38,16 +47,15 @@ public class PanelInicioPadre extends JPanel {
     private static class CompraHijo {
 
         LocalDateTime fecha;
-        String producto, metodo;
+        String producto, metodo, importe;
         int cantidad;
-        BigDecimal monto;
 
-        CompraHijo(LocalDateTime fecha, String producto, String metodo, int cantidad, BigDecimal monto) {
+        CompraHijo(LocalDateTime fecha, String producto, String metodo, int cantidad, String importe) {
             this.fecha = fecha;
             this.producto = producto;
             this.metodo = metodo;
             this.cantidad = cantidad;
-            this.monto = monto;
+            this.importe = importe;
         }
     }
 
@@ -68,8 +76,13 @@ public class PanelInicioPadre extends JPanel {
         }
     }
 
+    private final UsuarioController usuarioController = new UsuarioController();
+    private final BilleteraDAO billeteraDAO = new BilleteraDAO();
+    private final MovimientoDAO movimientoDAO = new MovimientoDAO();
+    private final RecargaDAO recargaDAO = new RecargaDAO();
+    private final Usuario padreActual;
+
     private final List<HijoFamiliar> hijos = new ArrayList<>();
-    private HijoFamiliar hijoActual;
 
     private PanelTablaBase<HijoFamiliar> tablaHijos;
     private PanelTablaBase<CompraHijo> tablaComprasHijo;
@@ -79,34 +92,31 @@ public class PanelInicioPadre extends JPanel {
     private final JLabel lblSaldoMonedasHijo = Estilos.titulo("0 monedas");
     private final JComboBox<String> cboHijoRecarga = new JComboBox<>();
 
-    public PanelInicioPadre() {
+    public PanelInicioPadre(Usuario padreActual) {
+        this.padreActual = padreActual;
+
         setLayout(new BorderLayout(0, Estilos.ESPACIO));
         setBackground(Estilos.FONDO);
         setBorder(Estilos.margen());
 
-        cargarGrupoFamiliar();
+        add(Estilos.titulo("Supervisión Familiar y Recargas (Grupo Familiar BD)"), BorderLayout.NORTH);
 
-        add(Estilos.titulo("Supervisión Familiar y Recargas (Grupo Familiar)"), BorderLayout.NORTH);
-
-        // Cuadrícula de 4 cuadros (2 arriba, 2 abajo)
         JPanel cuadricula = new JPanel(new GridLayout(2, 2, Estilos.ESPACIO_GRANDE, Estilos.ESPACIO_GRANDE));
         cuadricula.setOpaque(false);
-
         cuadricula.add(crearCuadroListaHijos());
         cuadricula.add(crearCuadroSaldoHijo());
         cuadricula.add(crearCuadroRecargaHijo());
         cuadricula.add(crearCuadroHistorialCompras());
-
         add(cuadricula, BorderLayout.CENTER);
 
-        seleccionarHijo(hijos.get(0));
+        recargarDesdeBD();
     }
 
     private JPanel crearCuadroListaHijos() {
         JPanel cuadro = new JPanel(new BorderLayout(0, Estilos.ESPACIO_CHICO));
         cuadro.setBackground(Estilos.FONDO_PANEL);
         cuadro.setBorder(Estilos.tarjeta());
-        cuadro.add(Estilos.subtitulo("1. Mis Hijos Registrados (Seleccione uno en la tabla)"), BorderLayout.NORTH);
+        cuadro.add(Estilos.subtitulo("1. Mis Hijos Registrados (BD)"), BorderLayout.NORTH);
 
         tablaHijos = new PanelTablaBase<>(
                 new String[]{"ID", "Estudiante", "Grado y Sección", "Saldo S/", "Monedas"},
@@ -121,7 +131,6 @@ public class PanelInicioPadre extends JPanel {
                 }
             }
         });
-
         cuadro.add(tablaHijos, BorderLayout.CENTER);
         return cuadro;
     }
@@ -140,7 +149,6 @@ public class PanelInicioPadre extends JPanel {
         datos.add(lblSaldoDineroHijo);
         datos.add(Estilos.etiqueta("Monedas por Logros:"));
         datos.add(lblSaldoMonedasHijo);
-
         cuadro.add(datos, BorderLayout.CENTER);
         return cuadro;
     }
@@ -150,9 +158,6 @@ public class PanelInicioPadre extends JPanel {
         cuadro.setBackground(Estilos.FONDO_PANEL);
         cuadro.setBorder(Estilos.tarjeta());
 
-        for (HijoFamiliar h : hijos) {
-            cboHijoRecarga.addItem(h.nombreCompleto);
-        }
         cboHijoRecarga.addActionListener(e -> {
             int idx = cboHijoRecarga.getSelectedIndex();
             if (idx >= 0 && idx < hijos.size()) {
@@ -177,27 +182,29 @@ public class PanelInicioPadre extends JPanel {
                 DialogoConfirmacion.error(this, "Ingrese un monto numérico válido.");
                 return;
             }
+
             if (!Validador.esMontoDineroValido(monto)) {
                 DialogoConfirmacion.error(this, "El monto debe ser positivo y con máximo 2 decimales.");
                 return;
             }
             MetodoPago metodo = (MetodoPago) cboMetodo.getSelectedItem();
-            if (DialogoConfirmacion.confirmar(this, "Confirmar Recarga Familiar",
-                    "¿Registrar recarga de " + Formato.dinero(monto) + " por " + metodo + " para " + destino.nombreCompleto + "?")) {
-                destino.saldoDinero = destino.saldoDinero.add(monto);
-                destino.compras.add(0, new CompraHijo(LocalDateTime.now(), "Recarga Familiar (" + metodo + ")", "RECARGA", 1, monto));
-                seleccionarHijo(destino);
-                Toast.exito(this, "Recarga enviada para " + destino.nombreCompleto);
+            if (DialogoConfirmacion.confirmar(this, "Confirmar Recarga Familiar", "¿Registrar recarga de " + Formato.dinero(monto) + " por " + metodo + " para " + destino.nombreCompleto + "?")) {
+                try {
+                    recargaDAO.registrarRecarga(padreActual.getIdUsuario(), destino.id, monto, metodo);
+                    recargarDesdeBD();
+                    Toast.exito(this, "Recarga enviada a BD en estado PENDIENTE.");
+                } catch (SQLException ex) {
+                    DialogoConfirmacion.error(this, "Error registrando recarga: " + ex.getMessage());
+                }
             }
         });
 
         int f = 0;
-        agregarFila(cuadro, f++, "3. Recargar Saldo a Hijo del Grupo Familiar", null, true);
+        agregarFila(cuadro, f++, "3. Solicitar Recarga a Administración", null, true);
         agregarFila(cuadro, f++, "Seleccionar Hijo:", cboHijoRecarga, false);
         agregarFila(cuadro, f++, "Monto a Recargar (S/):", txtMonto, false);
         agregarFila(cuadro, f++, "Método de Pago:", cboMetodo, false);
         agregarFila(cuadro, f, "", btnRecargar, false);
-
         return cuadro;
     }
 
@@ -205,11 +212,11 @@ public class PanelInicioPadre extends JPanel {
         JPanel cuadro = new JPanel(new BorderLayout(0, Estilos.ESPACIO_CHICO));
         cuadro.setBackground(Estilos.FONDO_PANEL);
         cuadro.setBorder(Estilos.tarjeta());
-        cuadro.add(Estilos.subtitulo("4. Historial de Compras y Movimientos del Hijo Seleccionado"), BorderLayout.NORTH);
+        cuadro.add(Estilos.subtitulo("4. Historial de Compras (BD)"), BorderLayout.NORTH);
 
         tablaComprasHijo = new PanelTablaBase<>(
                 new String[]{"Fecha", "Concepto / Producto", "Tipo", "Cant.", "Importe"},
-                c -> new Object[]{Formato.fechaHora(c.fecha), c.producto, c.metodo, c.cantidad, Formato.dinero(c.monto)}
+                c -> new Object[]{Formato.fechaHora(c.fecha), c.producto, c.metodo, c.cantidad, c.importe}
         );
         tablaComprasHijo.ocultarFiltroFecha();
         cuadro.add(tablaComprasHijo, BorderLayout.CENTER);
@@ -236,33 +243,41 @@ public class PanelInicioPadre extends JPanel {
         panel.add(campo, c);
     }
 
-    private void cargarGrupoFamiliar() {
-        LocalDateTime ahora = LocalDateTime.now();
+    private void recargarDesdeBD() {
+        if (padreActual == null) {
+            return;
+        }
+        try {
+            hijos.clear();
+            cboHijoRecarga.removeAllItems();
+            List<Usuario> hijosBD = usuarioController.obtenerHijosPorPadre(padreActual.getIdUsuario());
 
-        HijoFamiliar h1 = new HijoFamiliar(5, "Luis Fernando Torres Ramos", "5.º A", new BigDecimal("50.00"), 120);
-        h1.compras.add(new CompraHijo(ahora.minusDays(5), "Menú del día", "DINERO", 1, new BigDecimal("8.50")));
-        h1.compras.add(new CompraHijo(ahora.minusDays(1), "Exoneración de tarea (50 monedas)", "MONEDAS", 1, new BigDecimal("0.00")));
+            for (Usuario h : hijosBD) {
+                Billetera b = billeteraDAO.obtenerOCrearPorEstudiante(h.getIdUsuario());
+                HijoFamiliar hf = new HijoFamiliar(h.getIdUsuario(), h.getNombreCompleto(), (h.getGrado() == null ? "-" : h.getGrado()) + " " + (h.getSeccion() == null ? "-" : h.getSeccion()), b.getSaldoDinero(), b.getSaldoMonedas());
 
-        HijoFamiliar h2 = new HijoFamiliar(6, "Carla Sofía Torres Ramos", "5.º A", new BigDecimal("25.00"), 80);
-        h2.compras.add(new CompraHijo(ahora.minusDays(2), "Jugo natural", "DINERO", 2, new BigDecimal("7.00")));
-        h2.compras.add(new CompraHijo(ahora.minusDays(4), "Cuaderno A4", "DINERO", 1, new BigDecimal("7.50")));
+                for (DetalleMovimiento dm : movimientoDAO.listarPorEstudiante(h.getIdUsuario())) {
+                    String descTotal = dm.metodoPago() == TipoMoneda.DINERO ? Formato.dinero(dm.montoTotal()) : Formato.monedas(dm.montoTotal().intValue());
+                    hf.compras.add(new CompraHijo(dm.fecha(), dm.nombreProducto(), dm.metodoPago().name(), dm.cantidad(), descTotal));
+                }
+                hijos.add(hf);
+                cboHijoRecarga.addItem(hf.nombreCompleto);
+            }
+            tablaHijos.setDatos(hijos);
+            if (!hijos.isEmpty()) {
+                seleccionarHijo(hijos.get(0));
+            }
 
-        HijoFamiliar h3 = new HijoFamiliar(9, " Valeria Torres Ramos", "2.º B", new BigDecimal("18.00"), 60);
-        h3.compras.add(new CompraHijo(ahora.minusDays(3), "Sándwich de pollo", "DINERO", 1, new BigDecimal("6.00")));
-
-        hijos.add(h1);
-        hijos.add(h2);
-        hijos.add(h3);
+        } catch (SQLException e) {
+            DialogoConfirmacion.error(this, "Error listando hijos: " + e.getMessage());
+        }
     }
 
     private void seleccionarHijo(HijoFamiliar h) {
-        this.hijoActual = h;
         lblHijoSeleccionado.setText(h.nombreCompleto + " (" + h.gradoSeccion + ")");
         lblSaldoDineroHijo.setText(Formato.dinero(h.saldoDinero));
         lblSaldoMonedasHijo.setText(Formato.monedas(h.saldoMonedas));
         cboHijoRecarga.setSelectedItem(h.nombreCompleto);
-        tablaHijos.setDatos(hijos);
         tablaComprasHijo.setDatos(h.compras);
     }
-
 }

@@ -4,6 +4,15 @@
  */
 package com.mycompany.escuelavirtual.view;
 
+import com.mycompany.escuelavirtual.dao.BilleteraDAO;
+import com.mycompany.escuelavirtual.dao.LogroDAO;
+import com.mycompany.escuelavirtual.dao.LogroDAO.DetalleLogro;
+import com.mycompany.escuelavirtual.dao.MovimientoDAO;
+import com.mycompany.escuelavirtual.dao.MovimientoDAO.DetalleMovimiento;
+import com.mycompany.escuelavirtual.dao.ProductoDAO;
+import com.mycompany.escuelavirtual.model.Billetera;
+import com.mycompany.escuelavirtual.model.Producto;
+import com.mycompany.escuelavirtual.model.Usuario;
 import com.mycompany.escuelavirtual.model.enums.TipoMoneda;
 import com.mycompany.escuelavirtual.util.Formato;
 import com.mycompany.escuelavirtual.util.ui.DialogoConfirmacion;
@@ -14,6 +23,7 @@ import java.awt.BorderLayout;
 import java.awt.FlowLayout;
 import java.awt.GridLayout;
 import java.math.BigDecimal;
+import java.sql.SQLException;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -36,14 +46,13 @@ public class PanelInicioEstudiante extends JPanel {
     private static class ItemTienda {
 
         int id, stock;
-        String nombre, descripcion;
+        String nombre;
         BigDecimal precioDinero;
         Integer precioMonedas;
 
-        ItemTienda(int id, String nombre, String descripcion, BigDecimal precioDinero, Integer precioMonedas, int stock) {
+        ItemTienda(int id, String nombre, BigDecimal precioDinero, Integer precioMonedas, int stock) {
             this.id = id;
             this.nombre = nombre;
-            this.descripcion = descripcion;
             this.precioDinero = precioDinero;
             this.precioMonedas = precioMonedas;
             this.stock = stock;
@@ -53,13 +62,14 @@ public class PanelInicioEstudiante extends JPanel {
     private static class ItemLogro {
 
         LocalDateTime fecha;
-        String tipo, descripcion;
+        String tipo, descripcion, docente;
         int monedas;
 
-        ItemLogro(LocalDateTime fecha, String tipo, String descripcion, int monedas) {
+        ItemLogro(LocalDateTime fecha, String tipo, String descripcion, String docente, int monedas) {
             this.fecha = fecha;
             this.tipo = tipo;
             this.descripcion = descripcion;
+            this.docente = docente;
             this.monedas = monedas;
         }
     }
@@ -81,8 +91,14 @@ public class PanelInicioEstudiante extends JPanel {
         }
     }
 
-    private BigDecimal saldoDinero = new BigDecimal("50.00");
-    private int saldoMonedas = 120;
+    private final BilleteraDAO billeteraDAO = new BilleteraDAO();
+    private final ProductoDAO productoDAO = new ProductoDAO();
+    private final MovimientoDAO movimientoDAO = new MovimientoDAO();
+    private final LogroDAO logroDAO = new LogroDAO();
+    private final Usuario estudianteActual;
+
+    private BigDecimal saldoDinero = BigDecimal.ZERO;
+    private int saldoMonedas = 0;
 
     private final JLabel lblSaldoDinero = Estilos.titulo("");
     private final JLabel lblSaldoMonedas = Estilos.titulo("");
@@ -95,33 +111,31 @@ public class PanelInicioEstudiante extends JPanel {
     private PanelTablaBase<ItemLogro> tablaLogros;
     private PanelTablaBase<ItemMovimiento> tablaMovimientos;
 
-    public PanelInicioEstudiante() {
+    public PanelInicioEstudiante(Usuario estudianteActual) {
+        this.estudianteActual = estudianteActual;
+
         setLayout(new BorderLayout(0, Estilos.ESPACIO));
         setBackground(Estilos.FONDO);
         setBorder(Estilos.margen());
 
-        cargarDatosIniciales();
-
-        // Cabecera compacta con los 2 saldos
         JPanel norte = new JPanel(new BorderLayout(0, Estilos.ESPACIO));
         norte.setOpaque(false);
         norte.add(Estilos.titulo("Mi Billetera, Tienda y Logros"), BorderLayout.NORTH);
 
         JPanel pnlSaldos = new JPanel(new GridLayout(1, 2, Estilos.ESPACIO_GRANDE, 0));
         pnlSaldos.setOpaque(false);
-        pnlSaldos.add(crearTarjetaSaldoCompacta("Saldo para Gastos Escolares", lblSaldoDinero));
+        pnlSaldos.add(crearTarjetaSaldoCompacta("Saldo para Gastos Escolares (Soles)", lblSaldoDinero));
         pnlSaldos.add(crearTarjetaSaldoCompacta("Monedas Especiales de Recompensa", lblSaldoMonedas));
         norte.add(pnlSaldos, BorderLayout.CENTER);
         add(norte, BorderLayout.NORTH);
 
-        // Cuerpo principal: Izquierda Tienda, Derecha Historial de Logros y Compras
         JPanel centro = new JPanel(new GridLayout(1, 2, Estilos.ESPACIO_GRANDE, 0));
         centro.setOpaque(false);
         centro.add(crearCuadroTienda());
         centro.add(crearCuadroHistoriales());
 
         add(centro, BorderLayout.CENTER);
-        actualizarVista();
+        recargarDesdeBD();
     }
 
     private JPanel crearTarjetaSaldoCompacta(String titulo, JLabel lblValor) {
@@ -139,7 +153,7 @@ public class PanelInicioEstudiante extends JPanel {
         JPanel cuadro = new JPanel(new BorderLayout(0, Estilos.ESPACIO));
         cuadro.setBackground(Estilos.FONDO_PANEL);
         cuadro.setBorder(Estilos.tarjeta());
-        cuadro.add(Estilos.subtitulo("Tienda Escolar y Catálogo de Recompensas (Stock en vivo)"), BorderLayout.NORTH);
+        cuadro.add(Estilos.subtitulo("Tienda Escolar y Catálogo de Recompensas (Stock en vivo BD)"), BorderLayout.NORTH);
 
         tablaTienda = new PanelTablaBase<>(
                 new String[]{"ID", "Producto / Recompensa", "Precio S/", "Costo Monedas", "Stock"},
@@ -172,42 +186,40 @@ public class PanelInicioEstudiante extends JPanel {
                 return;
             }
             TipoMoneda metodo = (TipoMoneda) cboMetodo.getSelectedItem();
-            if (metodo == TipoMoneda.DINERO) {
-                if (prod.precioDinero == null) {
-                    DialogoConfirmacion.error(this, "Este artículo solo se puede canjear con MONEDAS.");
-                    return;
+            try {
+                if (metodo == TipoMoneda.DINERO) {
+                    if (prod.precioDinero == null) {
+                        DialogoConfirmacion.error(this, "Este artículo solo se puede canjear con MONEDAS.");
+                        return;
+                    }
+                    BigDecimal total = prod.precioDinero.multiply(BigDecimal.valueOf(cant));
+                    if (saldoDinero.compareTo(total) < 0) {
+                        DialogoConfirmacion.error(this, "Saldo insuficiente en Soles para realizar la compra.");
+                        return;
+                    }
+                    if (DialogoConfirmacion.confirmar(this, "Confirmar Compra", "¿Comprar " + cant + "x " + prod.nombre + " por " + Formato.dinero(total) + "?")) {
+                        movimientoDAO.registrarCompraOCanje(estudianteActual.getIdUsuario(), prod.id, metodo, cant, total);
+                        recargarDesdeBD();
+                        Toast.exito(this, "¡Compra realizada en BD con éxito!");
+                    }
+                } else {
+                    if (prod.precioMonedas == null) {
+                        DialogoConfirmacion.error(this, "Este producto solo se compra con DINERO (S/).");
+                        return;
+                    }
+                    int totalMonedas = prod.precioMonedas * cant;
+                    if (saldoMonedas < totalMonedas) {
+                        DialogoConfirmacion.error(this, "No tienes suficientes monedas especiales para este canje.");
+                        return;
+                    }
+                    if (DialogoConfirmacion.confirmar(this, "Confirmar Canje", "¿Canjear " + cant + "x " + prod.nombre + " por " + Formato.monedas(totalMonedas) + "?")) {
+                        movimientoDAO.registrarCompraOCanje(estudianteActual.getIdUsuario(), prod.id, metodo, cant, new BigDecimal(totalMonedas));
+                        recargarDesdeBD();
+                        Toast.exito(this, "¡Recompensa canjeada en BD con éxito!");
+                    }
                 }
-                BigDecimal total = prod.precioDinero.multiply(BigDecimal.valueOf(cant));
-                if (saldoDinero.compareTo(total) < 0) {
-                    DialogoConfirmacion.error(this, "Saldo insuficiente en Soles para realizar la compra.");
-                    return;
-                }
-                if (DialogoConfirmacion.confirmar(this, "Confirmar Compra",
-                        "¿Comprar " + cant + "x " + prod.nombre + " por " + Formato.dinero(total) + "?")) {
-                    saldoDinero = saldoDinero.subtract(total);
-                    prod.stock -= cant;
-                    misMovimientos.add(0, new ItemMovimiento(LocalDateTime.now(), prod.nombre, TipoMoneda.DINERO, cant, Formato.dinero(total)));
-                    actualizarVista();
-                    Toast.exito(this, "¡Compra realizada con éxito!");
-                }
-            } else {
-                if (prod.precioMonedas == null) {
-                    DialogoConfirmacion.error(this, "Este producto solo se compra con DINERO (S/).");
-                    return;
-                }
-                int totalMonedas = prod.precioMonedas * cant;
-                if (saldoMonedas < totalMonedas) {
-                    DialogoConfirmacion.error(this, "No tienes suficientes monedas especiales para este canje.");
-                    return;
-                }
-                if (DialogoConfirmacion.confirmar(this, "Confirmar Canje",
-                        "¿Canjear " + cant + "x " + prod.nombre + " por " + Formato.monedas(totalMonedas) + "?")) {
-                    saldoMonedas -= totalMonedas;
-                    prod.stock -= cant;
-                    misMovimientos.add(0, new ItemMovimiento(LocalDateTime.now(), prod.nombre, TipoMoneda.MONEDAS, cant, Formato.monedas(totalMonedas)));
-                    actualizarVista();
-                    Toast.exito(this, "¡Recompensa canjeada con éxito!");
-                }
+            } catch (SQLException ex) {
+                DialogoConfirmacion.error(this, "Error en la base de datos: " + ex.getMessage());
             }
         });
 
@@ -225,24 +237,22 @@ public class PanelInicioEstudiante extends JPanel {
         JPanel derecha = new JPanel(new GridLayout(2, 1, 0, Estilos.ESPACIO));
         derecha.setOpaque(false);
 
-        // Cuadro Superior: En qué ha ganado monedas de recompensa
         JPanel cuadroLogros = new JPanel(new BorderLayout(0, Estilos.ESPACIO_CHICO));
         cuadroLogros.setBackground(Estilos.FONDO_PANEL);
         cuadroLogros.setBorder(Estilos.tarjeta());
-        cuadroLogros.add(Estilos.subtitulo("¿En qué he ganado Monedas de Recompensa? (Mis Logros)"), BorderLayout.NORTH);
+        cuadroLogros.add(Estilos.subtitulo("¿En qué he ganado Monedas de Recompensa? (BD)"), BorderLayout.NORTH);
 
         tablaLogros = new PanelTablaBase<>(
-                new String[]{"Fecha", "Mérito / Logro", "Detalle del Docente", "Monedas Ganadas"},
-                l -> new Object[]{Formato.fechaHora(l.fecha), l.tipo, l.descripcion, "+" + Formato.monedas(l.monedas)}
+                new String[]{"Fecha", "Mérito / Logro", "Docente", "Monedas"},
+                l -> new Object[]{Formato.fechaHora(l.fecha), l.tipo, l.docente, "+" + Formato.monedas(l.monedas)}
         );
         tablaLogros.ocultarFiltroFecha();
         cuadroLogros.add(tablaLogros, BorderLayout.CENTER);
 
-        // Cuadro Inferior: Historial de compras y canjes
         JPanel cuadroMovs = new JPanel(new BorderLayout(0, Estilos.ESPACIO_CHICO));
         cuadroMovs.setBackground(Estilos.FONDO_PANEL);
         cuadroMovs.setBorder(Estilos.tarjeta());
-        cuadroMovs.add(Estilos.subtitulo("Mi Historial de Compras y Canjes en la Tienda"), BorderLayout.NORTH);
+        cuadroMovs.add(Estilos.subtitulo("Mi Historial de Compras y Canjes en la Tienda (BD)"), BorderLayout.NORTH);
 
         tablaMovimientos = new PanelTablaBase<>(
                 new String[]{"Fecha", "Producto / Recompensa", "Método", "Cant.", "Total"},
@@ -256,33 +266,39 @@ public class PanelInicioEstudiante extends JPanel {
         return derecha;
     }
 
-    private void cargarDatosIniciales() {
-        catalogo.add(new ItemTienda(1, "Menú del día", "Almuerzo completo escolar", new BigDecimal("8.50"), null, 40));
-        catalogo.add(new ItemTienda(2, "Sándwich de pollo", "Sándwich fresco", new BigDecimal("6.00"), null, 30));
-        catalogo.add(new ItemTienda(3, "Jugo natural", "Vaso de 300 ml", new BigDecimal("3.50"), null, 25));
-        catalogo.add(new ItemTienda(4, "Galletas integrales", "Paquete individual", new BigDecimal("2.00"), null, 60));
-        catalogo.add(new ItemTienda(5, "Cuaderno A4", "Anillado 100 hojas", new BigDecimal("7.50"), null, 15));
-        catalogo.add(new ItemTienda(6, "Pase libre de uniforme", "Un día sin uniforme", null, 80, 10));
-        catalogo.add(new ItemTienda(7, "Exoneración de tarea", "Un día sin tarea asignada", null, 50, 20));
-        catalogo.add(new ItemTienda(8, "Gorra del colegio", "Gorra oficial institucional", null, 100, 5));
-        catalogo.add(new ItemTienda(9, "Salida anticipada al recreo", "Cinco minutos antes", null, 30, 25));
-        catalogo.add(new ItemTienda(10, "Set de lapiceros", "Tres lapiceros de colores", new BigDecimal("4.50"), 35, 20));
+    private void recargarDesdeBD() {
+        if (estudianteActual == null) {
+            return;
+        }
+        try {
+            Billetera b = billeteraDAO.obtenerOCrearPorEstudiante(estudianteActual.getIdUsuario());
+            saldoDinero = b.getSaldoDinero();
+            saldoMonedas = b.getSaldoMonedas();
+            lblSaldoDinero.setText(Formato.dinero(saldoDinero));
+            lblSaldoMonedas.setText(Formato.monedas(saldoMonedas));
 
-        LocalDateTime ahora = LocalDateTime.now();
-        misLogros.add(new ItemLogro(ahora.minusDays(6), "Participación en clase", "Aportes voluntarios en semana de repaso", 10));
-        misLogros.add(new ItemLogro(ahora.minusDays(4), "Puntualidad", "Asistió a tiempo todos los días del mes", 5));
-        misLogros.add(new ItemLogro(ahora.minusDays(1), "Trabajo en equipo", "Apoyo destacado en laboratorio", 25));
+            catalogo.clear();
+            for (Producto p : productoDAO.listarActivos()) {
+                catalogo.add(new ItemTienda(p.getIdProducto(), p.getNombre(), p.getPrecioDinero(), p.getPrecioMonedas(), p.getStock()));
+            }
 
-        misMovimientos.add(new ItemMovimiento(ahora.minusDays(5), "Menú del día", TipoMoneda.DINERO, 1, Formato.dinero(new BigDecimal("8.50"))));
-        misMovimientos.add(new ItemMovimiento(ahora.minusHours(6), "Exoneración de tarea", TipoMoneda.MONEDAS, 1, Formato.monedas(50)));
+            misLogros.clear();
+            for (DetalleLogro dl : logroDAO.listarPorEstudiante(estudianteActual.getIdUsuario())) {
+                misLogros.add(new ItemLogro(dl.fecha(), dl.tipo(), dl.descripcion(), dl.nombreDocente(), dl.monedas()));
+            }
+
+            misMovimientos.clear();
+            for (DetalleMovimiento dm : movimientoDAO.listarPorEstudiante(estudianteActual.getIdUsuario())) {
+                String descTotal = dm.metodoPago() == TipoMoneda.DINERO ? Formato.dinero(dm.montoTotal()) : Formato.monedas(dm.montoTotal().intValue());
+                misMovimientos.add(new ItemMovimiento(dm.fecha(), dm.nombreProducto(), dm.metodoPago(), dm.cantidad(), descTotal));
+            }
+
+            tablaTienda.setDatos(catalogo);
+            tablaLogros.setDatos(misLogros);
+            tablaMovimientos.setDatos(misMovimientos);
+
+        } catch (SQLException e) {
+            DialogoConfirmacion.error(this, "Error cargando billetera del estudiante: " + e.getMessage());
+        }
     }
-
-    private void actualizarVista() {
-        lblSaldoDinero.setText(Formato.dinero(saldoDinero));
-        lblSaldoMonedas.setText(Formato.monedas(saldoMonedas));
-        tablaTienda.setDatos(catalogo);
-        tablaLogros.setDatos(misLogros);
-        tablaMovimientos.setDatos(misMovimientos);
-    }
-
 }
