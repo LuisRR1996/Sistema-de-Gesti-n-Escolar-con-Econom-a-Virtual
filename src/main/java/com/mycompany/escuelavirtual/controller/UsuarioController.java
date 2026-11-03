@@ -3,52 +3,53 @@ package com.mycompany.escuelavirtual.controller;
 import com.mycompany.escuelavirtual.model.Usuario;
 import com.mycompany.escuelavirtual.model.enums.Rol;
 import com.mycompany.escuelavirtual.service.UsuarioService;
-import java.sql.SQLException;
-import java.util.Collections;
 import java.util.List;
 
+/**
+ * Orquesta la gestión de usuarios entre la vista y {@link UsuarioService} (M02).
+ *
+ * <p>El controlador fija el actor de la sesión en cada llamada, de modo que la
+ * vista no pueda elegir en nombre de quién actúa. Las reglas y el control de
+ * acceso viven en el servicio y en {@code Permisos}: así ninguna ruta —ni la
+ * interfaz, ni una prueba, ni otro controlador— puede esquivarlos. Los errores
+ * de negocio suben como {@code NegocioException}.</p>
+ */
 public class UsuarioController {
-    
-    private final UsuarioService usuarioService = new UsuarioService();
 
-    public List<Usuario> obtenerTodosLosUsuarios() {
-        try {
-            return usuarioService.listarTodos();
-        } catch (SQLException e) {
-            System.err.println("Error al listar usuarios: " + e.getMessage());
-            return Collections.emptyList();
-        }
+    private final UsuarioService usuarioService;
+    private final Usuario actor;
+
+    public UsuarioController(Usuario actor) {
+        this(new UsuarioService(), actor);
     }
 
-    public List<Usuario> obtenerPorRol(Rol rol) {
-        try {
-            return usuarioService.listarPorRol(rol);
-        } catch (SQLException e) {
-            System.err.println("Error al listar usuarios por rol: " + e.getMessage());
-            return Collections.emptyList();
-        }
+    public UsuarioController(UsuarioService usuarioService, Usuario actor) {
+        this.usuarioService = usuarioService;
+        this.actor = actor;
     }
 
-    public List<Usuario> obtenerHijosPorPadre(int idPadre) {
-        try {
-            return usuarioService.listarHijosPorPadre(idPadre);
-        } catch (SQLException e) {
-            System.err.println("Error al listar hijos del padre: " + e.getMessage());
-            return Collections.emptyList();
-        }
+    public List<Usuario> listarTodos() {
+        return usuarioService.listarTodos(actor);
     }
 
-    public Usuario registrarUsuario(String nombres, String apellidos, String correo, String clave,
-            Rol rol, String grado, String seccion, Integer idPadre) throws SQLException {
-        return usuarioService.registrar(nombres, apellidos, correo, clave, rol, grado, seccion, idPadre);
+    public List<Usuario> listarPorRol(Rol rol) {
+        return usuarioService.listarPorRol(actor, rol);
     }
 
-    public void actualizarUsuario(Usuario u) throws SQLException {
-        usuarioService.actualizar(u);
+    public List<Usuario> listarHijos() {
+        return usuarioService.listarHijos(actor, actor.getIdUsuario());
     }
 
-    public void cambiarEstado(int idUsuario, boolean activo) throws SQLException {
-        usuarioService.cambiarEstado(idUsuario, activo);
+    public Usuario registrar(String nombres, String apellidos, String correo, String clave,
+            Rol rol, String grado, String seccion, Integer idPadre) {
+        return usuarioService.registrar(actor, nombres, apellidos, correo, clave, rol, grado, seccion, idPadre);
     }
-    
+
+    public void actualizar(Usuario usuario) {
+        usuarioService.actualizar(actor, usuario);
+    }
+
+    public void cambiarEstado(int idUsuario, boolean activo) {
+        usuarioService.cambiarEstado(actor, idUsuario, activo);
+    }
 }

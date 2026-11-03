@@ -4,17 +4,16 @@
  */
 package com.mycompany.escuelavirtual.view;
 
+import com.mycompany.escuelavirtual.controller.BilleteraController;
+import com.mycompany.escuelavirtual.controller.RecargaController;
 import com.mycompany.escuelavirtual.controller.UsuarioController;
-import com.mycompany.escuelavirtual.dao.BilleteraDAO;
-import com.mycompany.escuelavirtual.dao.MovimientoDAO;
-import com.mycompany.escuelavirtual.dao.MovimientoDAO.DetalleMovimiento;
-import com.mycompany.escuelavirtual.dao.RecargaDAO;
 import com.mycompany.escuelavirtual.model.Billetera;
+import com.mycompany.escuelavirtual.model.DetalleMovimiento;
 import com.mycompany.escuelavirtual.model.Usuario;
 import com.mycompany.escuelavirtual.model.enums.MetodoPago;
 import com.mycompany.escuelavirtual.model.enums.TipoMoneda;
 import com.mycompany.escuelavirtual.util.Formato;
-import com.mycompany.escuelavirtual.util.Validador;
+import com.mycompany.escuelavirtual.util.NegocioException;
 import com.mycompany.escuelavirtual.util.ui.DialogoConfirmacion;
 import com.mycompany.escuelavirtual.util.ui.Estilos;
 import com.mycompany.escuelavirtual.util.ui.PanelTablaBase;
@@ -25,7 +24,6 @@ import java.awt.GridBagLayout;
 import java.awt.GridLayout;
 import java.awt.Insets;
 import java.math.BigDecimal;
-import java.sql.SQLException;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -76,10 +74,9 @@ public class PanelInicioPadre extends JPanel {
         }
     }
 
-    private final UsuarioController usuarioController = new UsuarioController();
-    private final BilleteraDAO billeteraDAO = new BilleteraDAO();
-    private final MovimientoDAO movimientoDAO = new MovimientoDAO();
-    private final RecargaDAO recargaDAO = new RecargaDAO();
+    private final UsuarioController usuarioController;
+    private final BilleteraController billeteraController;
+    private final RecargaController recargaController;
     private final Usuario padreActual;
 
     private final List<HijoFamiliar> hijos = new ArrayList<>();
@@ -94,6 +91,9 @@ public class PanelInicioPadre extends JPanel {
 
     public PanelInicioPadre(Usuario padreActual) {
         this.padreActual = padreActual;
+        this.usuarioController = new UsuarioController(padreActual);
+        this.billeteraController = new BilleteraController(padreActual);
+        this.recargaController = new RecargaController(padreActual);
 
         setLayout(new BorderLayout(0, Estilos.ESPACIO));
         setBackground(Estilos.FONDO);
@@ -183,18 +183,15 @@ public class PanelInicioPadre extends JPanel {
                 return;
             }
 
-            if (!Validador.esMontoDineroValido(monto)) {
-                DialogoConfirmacion.error(this, "El monto debe ser positivo y con máximo 2 decimales.");
-                return;
-            }
             MetodoPago metodo = (MetodoPago) cboMetodo.getSelectedItem();
             if (DialogoConfirmacion.confirmar(this, "Confirmar Recarga Familiar", "¿Registrar recarga de " + Formato.dinero(monto) + " por " + metodo + " para " + destino.nombreCompleto + "?")) {
                 try {
-                    recargaDAO.registrarRecarga(padreActual.getIdUsuario(), destino.id, monto, metodo);
+                    // El monto, el método y el vínculo padre-hijo los valida el servicio.
+                    recargaController.registrar(destino.id, monto, metodo);
                     recargarDesdeBD();
-                    Toast.exito(this, "Recarga enviada a BD en estado PENDIENTE.");
-                } catch (SQLException ex) {
-                    DialogoConfirmacion.error(this, "Error registrando recarga: " + ex.getMessage());
+                    Toast.exito(this, "Recarga registrada en estado PENDIENTE: no acredita hasta que el administrador la apruebe.");
+                } catch (NegocioException ex) {
+                    DialogoConfirmacion.error(this, ex.getMessage());
                 }
             }
         });
@@ -250,15 +247,22 @@ public class PanelInicioPadre extends JPanel {
         try {
             hijos.clear();
             cboHijoRecarga.removeAllItems();
-            List<Usuario> hijosBD = usuarioController.obtenerHijosPorPadre(padreActual.getIdUsuario());
 
-            for (Usuario h : hijosBD) {
-                Billetera b = billeteraDAO.obtenerOCrearPorEstudiante(h.getIdUsuario());
-                HijoFamiliar hf = new HijoFamiliar(h.getIdUsuario(), h.getNombreCompleto(), (h.getGrado() == null ? "-" : h.getGrado()) + " " + (h.getSeccion() == null ? "-" : h.getSeccion()), b.getSaldoDinero(), b.getSaldoMonedas());
+            for (Usuario h : usuarioController.listarHijos()) {
+                Billetera b = billeteraController.consultarSaldo(h.getIdUsuario());
+                HijoFamiliar hf = new HijoFamiliar(
+                        h.getIdUsuario(),
+                        h.getNombreCompleto(),
+                        (h.getGrado() == null ? "-" : h.getGrado()) + " " + (h.getSeccion() == null ? "-" : h.getSeccion()),
+                        b.getSaldoDinero(),
+                        b.getSaldoMonedas());
 
-                for (DetalleMovimiento dm : movimientoDAO.listarPorEstudiante(h.getIdUsuario())) {
-                    String descTotal = dm.metodoPago() == TipoMoneda.DINERO ? Formato.dinero(dm.montoTotal()) : Formato.monedas(dm.montoTotal().intValue());
-                    hf.compras.add(new CompraHijo(dm.fecha(), dm.nombreProducto(), dm.metodoPago().name(), dm.cantidad(), descTotal));
+                for (DetalleMovimiento dm : billeteraController.listarMovimientos(h.getIdUsuario())) {
+                    String descTotal = dm.metodoPago() == TipoMoneda.DINERO
+                            ? Formato.dinero(dm.montoTotal())
+                            : Formato.monedas(dm.montoTotal().intValue());
+                    hf.compras.add(new CompraHijo(dm.fecha(), dm.nombreProducto(), dm.metodoPago().name(),
+                            dm.cantidad(), descTotal));
                 }
                 hijos.add(hf);
                 cboHijoRecarga.addItem(hf.nombreCompleto);
@@ -268,8 +272,8 @@ public class PanelInicioPadre extends JPanel {
                 seleccionarHijo(hijos.get(0));
             }
 
-        } catch (SQLException e) {
-            DialogoConfirmacion.error(this, "Error listando hijos: " + e.getMessage());
+        } catch (NegocioException e) {
+            DialogoConfirmacion.error(this, e.getMessage());
         }
     }
 

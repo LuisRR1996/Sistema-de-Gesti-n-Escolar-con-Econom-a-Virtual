@@ -187,6 +187,51 @@ public class UsuarioDAO extends BaseDAO {
         }
     }
     
+    /**
+     * @return el usuario con ese identificador o {@code null} si no existe
+     */
+    public Usuario buscarPorId(int idUsuario) throws SQLException {
+        String sql = "SELECT " + COLUMNAS + " FROM usuarios WHERE id_usuario = ?";
+        try (Connection cn = connection(); PreparedStatement ps = cn.prepareStatement(sql)) {
+            ps.setInt(1, idUsuario);
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next() ? mapear(rs) : null;
+            }
+        }
+    }
+
+    /**
+     * Verifica el vínculo familiar contra {@code usuarios.id_padre} (RN-08).
+     * Es la única fuente del permiso del padre: no se deduce de la interfaz.
+     */
+    public boolean esHijoDe(int idPadre, int idEstudiante) throws SQLException {
+        String sql = """
+                SELECT 1
+                  FROM usuarios
+                 WHERE id_usuario = ? AND id_padre = ? AND rol = 'ESTUDIANTE'""";
+        try (Connection cn = connection(); PreparedStatement ps = cn.prepareStatement(sql)) {
+            ps.setInt(1, idEstudiante);
+            ps.setInt(2, idPadre);
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next();
+            }
+        }
+    }
+
+    /** Administradores activos distintos del indicado. */
+    public int contarAdminsActivosExcepto(int idUsuario) throws SQLException {
+        String sql = """
+                SELECT COUNT(*)
+                  FROM usuarios
+                 WHERE rol = 'ADMIN' AND estado = 1 AND id_usuario <> ?""";
+        try (Connection cn = connection(); PreparedStatement ps = cn.prepareStatement(sql)) {
+            ps.setInt(1, idUsuario);
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next() ? rs.getInt(1) : 0;
+            }
+        }
+    }
+
     public boolean registrarIntentoFallido(int idUsuario, int maxIntentos, int minutosBloqueo)
             throws SQLException {
         String sql = """
