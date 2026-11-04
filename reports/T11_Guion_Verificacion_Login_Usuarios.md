@@ -145,3 +145,9 @@ El guion crea y elimina su propio usuario; de los datos iniciales solo cambia `u
 | Docente asesor | | | |
 
 > El guion no puede firmarse como cerrado mientras D-T11-01 siga abierto: CP-01 queda parcial y CP-18 sin ejecutar.
+
+---
+
+## Addendum del 03/11/2026 · cierre por T12
+
+D-T11-01 quedó corregido en T12: el `MainFrame` ya construye el árbol de módulos a partir del nuevo enum `Modulo`, y CP-01 y CP-18 se reejecutaron en verde. D-T11-02 y D-T11-03 siguen abiertos como S3 diferidos. El detalle, la evidencia nueva y los criterios de salida de la etapa están en `reports/T12_Informe_Pruebas_Etapa1.md`; este guion queda en condiciones de firmarse.

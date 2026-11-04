@@ -37,8 +37,9 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  * reactivación y vínculo padre–hijo.</p>
  *
  * <p>La parte visual de CP-01 —«se abre el MainFrame con los 9 módulos»— y
- * CP-18 completo dependen del árbol de módulos de T09, que todavía no existe:
- * quedan como pasos manuales del guion y se marcan bloqueados.</p>
+ * CP-18 quedaron bloqueados en la ejecución del 03/11 por el defecto D-T11-01.
+ * Con el árbol de módulos ya construido, se verifican en {@code ModuloTest} y
+ * en {@code PruebasEtapa1Test} (T12).</p>
  *
  * <p>La prueba se omite sola si no hay SQL Server. Crea un usuario propio con
  * el correo {@value #CORREO_QA} y lo elimina al terminar; de los datos
@@ -237,9 +238,9 @@ class GuionT11Test {
 
     @Test
     @Order(8)
-    @DisplayName("CP-18 (parcial) · Cada rol recibe exactamente los permisos del anexo C")
+    @DisplayName("CP-18 · Cada rol recibe exactamente los permisos del anexo C")
     void cp18PermisosPorRol() throws SQLException {
-        // El árbol de módulos es de T09; lo verificable hoy es la matriz que lo alimentará.
+        // Aquí se comprueba la matriz de acciones; los módulos del árbol, en ModuloTest.
         assertEquals(CodigoError.PERMISO_DENEGADO,
                 assertThrows(NegocioException.class,
                         () -> USUARIOS.listarTodos(padrePropietario)).getCodigo());
