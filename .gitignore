@@ -91,4 +91,7 @@ desktop.ini
 *.rej
 
 # -------------- Otros ------------------
-docs/
+# Los documentos en markdown se versionan (T13); los binarios pesados, no.
+docs/*.docx
+docs/*.xlsx
+docs/*.pdf
