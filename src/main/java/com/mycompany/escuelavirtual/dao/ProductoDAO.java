@@ -12,9 +12,12 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class ProductoDAO extends BaseDAO {
-    
+
+    private static final String COLUMNAS =
+            "id_producto, nombre, descripcion, precio_dinero, precio_monedas, stock, activo";
+
     public List<Producto> listarTodos() throws SQLException {
-        String sql = "SELECT id_producto, nombre, descripcion, precio_dinero, precio_monedas, stock, activo FROM productos ORDER BY id_producto";
+        String sql = "SELECT " + COLUMNAS + " FROM productos ORDER BY id_producto";
         List<Producto> lista = new ArrayList<>();
         try (Connection cn = connection(); PreparedStatement ps = cn.prepareStatement(sql); ResultSet rs = ps.executeQuery()) {
             while (rs.next()) {
@@ -25,7 +28,7 @@ public class ProductoDAO extends BaseDAO {
     }
 
     public List<Producto> listarActivos() throws SQLException {
-        String sql = "SELECT id_producto, nombre, descripcion, precio_dinero, precio_monedas, stock, activo FROM productos WHERE activo = 1 ORDER BY id_producto";
+        String sql = "SELECT " + COLUMNAS + " FROM productos WHERE activo = 1 ORDER BY id_producto";
         List<Producto> lista = new ArrayList<>();
         try (Connection cn = connection(); PreparedStatement ps = cn.prepareStatement(sql); ResultSet rs = ps.executeQuery()) {
             while (rs.next()) {
@@ -103,6 +106,30 @@ public class ProductoDAO extends BaseDAO {
         String sql = "UPDATE productos SET activo = ? WHERE id_producto = ?";
         try (Connection cn = connection(); PreparedStatement ps = cn.prepareStatement(sql)) {
             ps.setBoolean(1, activo);
+            ps.setInt(2, idProducto);
+            ps.executeUpdate();
+        }
+    }
+
+    /**
+     * Lee el producto reservando su fila hasta el final de la transacción, para
+     * que dos compras simultáneas no vean el mismo stock.
+     */
+    public Producto bloquearPorId(Connection cn, int idProducto) throws SQLException {
+        String sql = "SELECT " + COLUMNAS + " FROM productos WITH (UPDLOCK, ROWLOCK) WHERE id_producto = ?";
+        try (PreparedStatement ps = cn.prepareStatement(sql)) {
+            ps.setInt(1, idProducto);
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next() ? mapear(rs) : null;
+            }
+        }
+    }
+
+    /** Descuenta stock dentro de la transacción del servicio (RN-04). */
+    public void descontarStock(Connection cn, int idProducto, int cantidad) throws SQLException {
+        String sql = "UPDATE productos SET stock = stock - ? WHERE id_producto = ?";
+        try (PreparedStatement ps = cn.prepareStatement(sql)) {
+            ps.setInt(1, cantidad);
             ps.setInt(2, idProducto);
             ps.executeUpdate();
         }

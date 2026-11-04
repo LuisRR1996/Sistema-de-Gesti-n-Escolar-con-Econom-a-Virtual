@@ -4,17 +4,18 @@
  */
 package com.mycompany.escuelavirtual.view;
 
+import com.mycompany.escuelavirtual.controller.CatalogoController;
+import com.mycompany.escuelavirtual.controller.LogroController;
+import com.mycompany.escuelavirtual.controller.RecargaController;
+import com.mycompany.escuelavirtual.controller.ReporteController;
 import com.mycompany.escuelavirtual.controller.UsuarioController;
-import com.mycompany.escuelavirtual.dao.LogroDAO;
-import com.mycompany.escuelavirtual.dao.ProductoDAO;
-import com.mycompany.escuelavirtual.dao.RecargaDAO;
-import com.mycompany.escuelavirtual.dao.RecargaDAO.DetalleRecarga;
+import com.mycompany.escuelavirtual.model.DetalleRecarga;
 import com.mycompany.escuelavirtual.model.Producto;
 import com.mycompany.escuelavirtual.model.Usuario;
 import com.mycompany.escuelavirtual.model.enums.EstadoRecarga;
 import com.mycompany.escuelavirtual.model.enums.Rol;
 import com.mycompany.escuelavirtual.util.Formato;
-import com.mycompany.escuelavirtual.util.Validador;
+import com.mycompany.escuelavirtual.util.NegocioException;
 import com.mycompany.escuelavirtual.util.ui.DialogoConfirmacion;
 import com.mycompany.escuelavirtual.util.ui.Estilos;
 import com.mycompany.escuelavirtual.util.ui.PanelTablaBase;
@@ -26,7 +27,6 @@ import java.awt.GridBagLayout;
 import java.awt.GridLayout;
 import java.awt.Insets;
 import java.math.BigDecimal;
-import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
 import javax.swing.BorderFactory;
@@ -52,12 +52,11 @@ public class PanelInicioAdmin extends JPanel {
         }
     }
 
-    private final UsuarioController usuarioController = new UsuarioController();
-    private final ProductoDAO productoDAO = new ProductoDAO();
-    private final RecargaDAO recargaDAO = new RecargaDAO();
-    private final LogroDAO logroDAO = new LogroDAO();
-
-    private final int idAdminActual;
+    private final UsuarioController usuarioController;
+    private final CatalogoController catalogoController;
+    private final RecargaController recargaController;
+    private final LogroController logroController;
+    private final ReporteController reporteController;
 
     private List<Usuario> usuarios = new ArrayList<>();
     private List<DetalleRecarga> recargas = new ArrayList<>();
@@ -67,6 +66,7 @@ public class PanelInicioAdmin extends JPanel {
     private final JLabel lblKpiInactivos = Estilos.titulo("0");
     private final JLabel lblKpiRecargas = Estilos.titulo("0");
     private final JLabel lblKpiStockBajo = Estilos.titulo("0");
+    private final JLabel lblKpiDescuadres = Estilos.titulo("0");
 
     private PanelTablaBase<Usuario> tablaActivos;
     private PanelTablaBase<Usuario> tablaInactivos;
@@ -98,12 +98,12 @@ public class PanelInicioAdmin extends JPanel {
     private final JButton btnGuardarProducto = Estilos.botonPrimario("Agregar al Catálogo");
     private final JButton btnCancelarProducto = Estilos.botonSecundario("Cancelar");
 
-    public PanelInicioAdmin() {
-        this(null);
-    }
-
     public PanelInicioAdmin(Usuario adminActual) {
-        this.idAdminActual = (adminActual != null && adminActual.getIdUsuario() != null) ? adminActual.getIdUsuario() : 1;
+        this.usuarioController = new UsuarioController(adminActual);
+        this.catalogoController = new CatalogoController(adminActual);
+        this.recargaController = new RecargaController(adminActual);
+        this.logroController = new LogroController(adminActual);
+        this.reporteController = new ReporteController(adminActual);
 
         setLayout(new BorderLayout(0, Estilos.ESPACIO));
         setBackground(Estilos.FONDO);
@@ -126,12 +126,14 @@ public class PanelInicioAdmin extends JPanel {
     }
 
     private JPanel crearBarraIndicadores() {
-        JPanel barra = new JPanel(new GridLayout(1, 4, Estilos.ESPACIO, 0));
+        JPanel barra = new JPanel(new GridLayout(1, 5, Estilos.ESPACIO, 0));
         barra.setOpaque(false);
         barra.add(crearMiniTarjeta("Usuarios Activos", lblKpiActivos));
         barra.add(crearMiniTarjeta("Usuarios Inactivos", lblKpiInactivos));
         barra.add(crearMiniTarjeta("Recargas Pendientes", lblKpiRecargas));
         barra.add(crearMiniTarjeta("Productos por Reponer", lblKpiStockBajo));
+        // Conciliacion de ADR-04: cualquier valor distinto de cero exige revision (CP-20).
+        barra.add(crearMiniTarjeta("Billeteras Descuadradas", lblKpiDescuadres));
         return barra;
     }
 
@@ -166,14 +168,6 @@ public class PanelInicioAdmin extends JPanel {
         });
 
         btnGuardarUsuario.addActionListener(e -> {
-            if (!Validador.esTextoValido(txtNombresU.getText()) || !Validador.esTextoValido(txtApellidosU.getText())) {
-                DialogoConfirmacion.error(this, "Complete los nombres y apellidos del usuario.");
-                return;
-            }
-            if (!Validador.esCorreoValido(txtCorreoU.getText())) {
-                DialogoConfirmacion.error(this, "Ingrese un correo institucional válido.");
-                return;
-            }
             Rol rol = (Rol) cboRolU.getSelectedItem();
             ItemComboUsuario padreSel = (ItemComboUsuario) cboPadreU.getSelectedItem();
             Integer idPadre = (rol == Rol.ESTUDIANTE && padreSel != null) ? padreSel.id() : null;
@@ -181,11 +175,7 @@ public class PanelInicioAdmin extends JPanel {
             try {
                 if (usuarioEnEdicion == null) {
                     String clave = new String(txtClaveU.getPassword());
-                    if (clave.isBlank()) {
-                        DialogoConfirmacion.error(this, "Ingrese una contraseña inicial.");
-                        return;
-                    }
-                    usuarioController.registrarUsuario(
+                    usuarioController.registrar(
                             txtNombresU.getText(),
                             txtApellidosU.getText(),
                             txtCorreoU.getText(),
@@ -204,13 +194,13 @@ public class PanelInicioAdmin extends JPanel {
                     usuarioEnEdicion.setGrado(rol == Rol.ESTUDIANTE ? txtGradoU.getText().trim() : null);
                     usuarioEnEdicion.setSeccion(rol == Rol.ESTUDIANTE ? txtSeccionU.getText().trim() : null);
                     usuarioEnEdicion.setIdPadre(idPadre);
-                    usuarioController.actualizarUsuario(usuarioEnEdicion);
+                    usuarioController.actualizar(usuarioEnEdicion);
                     Toast.exito(this, "Usuario actualizado en SQL Server.");
                 }
                 limpiarFormularioUsuario();
                 recargarDesdeBD();
-            } catch (SQLException ex) {
-                DialogoConfirmacion.error(this, "No se pudo guardar en BD: " + ex.getMessage());
+            } catch (NegocioException ex) {
+                DialogoConfirmacion.error(this, ex.getMessage());
             }
         });
 
@@ -262,8 +252,8 @@ public class PanelInicioAdmin extends JPanel {
                 usuarioController.cambiarEstado(sel.getIdUsuario(), false);
                 recargarDesdeBD();
                 Toast.info(this, sel.getNombres() + " pasó a estado INACTIVO en BD.");
-            } catch (SQLException ex) {
-                DialogoConfirmacion.error(this, "Error al desactivar usuario: " + ex.getMessage());
+            } catch (NegocioException ex) {
+                DialogoConfirmacion.error(this, ex.getMessage());
             }
         });
 
@@ -310,8 +300,8 @@ public class PanelInicioAdmin extends JPanel {
                 usuarioController.cambiarEstado(sel.getIdUsuario(), true);
                 recargarDesdeBD();
                 Toast.exito(this, sel.getNombres() + " fue REACTIVADO en BD.");
-            } catch (SQLException ex) {
-                DialogoConfirmacion.error(this, "Error al reactivar usuario: " + ex.getMessage());
+            } catch (NegocioException ex) {
+                DialogoConfirmacion.error(this, ex.getMessage());
             }
         });
 
@@ -415,11 +405,11 @@ public class PanelInicioAdmin extends JPanel {
             if (DialogoConfirmacion.confirmar(this, "Autorizar Recarga",
                     "¿Aprobar recarga de " + Formato.dinero(sel.monto()) + " para " + sel.nombreEstudiante() + "?")) {
                 try {
-                    recargaDAO.aprobarRecarga(sel.idRecarga(), idAdminActual);
+                    recargaController.aprobar(sel.idRecarga());
                     recargarDesdeBD();
                     Toast.exito(this, "Recarga aprobada y acreditada en la billetera del alumno.");
-                } catch (SQLException ex) {
-                    DialogoConfirmacion.error(this, "Error al aprobar recarga: " + ex.getMessage());
+                } catch (NegocioException ex) {
+                    DialogoConfirmacion.error(this, ex.getMessage());
                 }
             }
         });
@@ -431,11 +421,11 @@ public class PanelInicioAdmin extends JPanel {
                 return;
             }
             try {
-                recargaDAO.rechazarRecarga(sel.idRecarga(), idAdminActual, "Rechazada por el administrador");
+                recargaController.rechazar(sel.idRecarga(), "Rechazada por el administrador");
                 recargarDesdeBD();
-                Toast.info(this, "Recarga rechazada en BD.");
-            } catch (SQLException ex) {
-                DialogoConfirmacion.error(this, "Error al rechazar recarga: " + ex.getMessage());
+                Toast.info(this, "Recarga rechazada: el saldo no cambia.");
+            } catch (NegocioException ex) {
+                DialogoConfirmacion.error(this, ex.getMessage());
             }
         });
 
@@ -471,17 +461,16 @@ public class PanelInicioAdmin extends JPanel {
             if (DialogoConfirmacion.confirmar(this, "Confirmar Monedas Especiales",
                     "¿Acreditar " + cant + " monedas a " + alumno.etiqueta() + "?")) {
                 try {
-                    logroDAO.otorgarLogro(
+                    logroController.registrar(
                             alumno.id(),
-                            idAdminActual,
                             (String) cboMotivo.getSelectedItem(),
-                            txtDetalle.getText().trim(),
+                            txtDetalle.getText(),
                             cant
                     );
                     recargarDesdeBD();
-                    Toast.exito(this, "Se acreditaron +" + cant + " monedas en BD a " + alumno.etiqueta());
-                } catch (SQLException ex) {
-                    DialogoConfirmacion.error(this, "Error al acreditar monedas: " + ex.getMessage());
+                    Toast.exito(this, "Se acreditaron +" + cant + " monedas a " + alumno.etiqueta());
+                } catch (NegocioException ex) {
+                    DialogoConfirmacion.error(this, ex.getMessage());
                 }
             }
         });
@@ -505,10 +494,6 @@ public class PanelInicioAdmin extends JPanel {
         btnCancelarProducto.addActionListener(e -> limpiarFormularioProducto());
 
         btnGuardarProducto.addActionListener(e -> {
-            if (!Validador.esTextoValido(txtNombreP.getText())) {
-                DialogoConfirmacion.error(this, "El nombre del producto es obligatorio.");
-                return;
-            }
             BigDecimal pDinero = null;
             Integer pMonedas = null;
             try {
@@ -522,11 +507,6 @@ public class PanelInicioAdmin extends JPanel {
                 DialogoConfirmacion.error(this, "Verifique los importes en Soles o Monedas.");
                 return;
             }
-            if (pDinero == null && pMonedas == null) {
-                DialogoConfirmacion.error(this, "Defina al menos un precio (Soles o Monedas).");
-                return;
-            }
-
             try {
                 if (productoEnEdicion == null) {
                     Producto nuevo = new Producto();
@@ -536,7 +516,7 @@ public class PanelInicioAdmin extends JPanel {
                     nuevo.setPrecioMonedas(pMonedas);
                     nuevo.setStock((Integer) spnStockP.getValue());
                     nuevo.setActivo(true);
-                    productoDAO.insertar(nuevo);
+                    catalogoController.registrar(nuevo);
                     Toast.exito(this, "Producto agregado a SQL Server.");
                 } else {
                     productoEnEdicion.setNombre(txtNombreP.getText().trim());
@@ -544,13 +524,13 @@ public class PanelInicioAdmin extends JPanel {
                     productoEnEdicion.setPrecioDinero(pDinero);
                     productoEnEdicion.setPrecioMonedas(pMonedas);
                     productoEnEdicion.setStock((Integer) spnStockP.getValue());
-                    productoDAO.actualizar(productoEnEdicion);
+                    catalogoController.actualizar(productoEnEdicion);
                     Toast.exito(this, "Producto actualizado en SQL Server.");
                 }
                 limpiarFormularioProducto();
                 recargarDesdeBD();
-            } catch (SQLException ex) {
-                DialogoConfirmacion.error(this, "Error al guardar producto: " + ex.getMessage());
+            } catch (NegocioException ex) {
+                DialogoConfirmacion.error(this, ex.getMessage());
             }
         });
 
@@ -602,13 +582,13 @@ public class PanelInicioAdmin extends JPanel {
             if (sel != null && sel.getStock() > 0) {
                 try {
                     int nuevoStock = sel.getStock() - 1;
-                    productoDAO.actualizarStock(sel.getIdProducto(), nuevoStock);
+                    catalogoController.ajustarStock(sel.getIdProducto(), nuevoStock);
                     recargarDesdeBD();
                     if (nuevoStock <= 10) {
                         Toast.error(this, "⚠ Aviso: Stock bajo de '" + sel.getNombre() + "'.");
                     }
-                } catch (SQLException ex) {
-                    DialogoConfirmacion.error(this, "Error al descontar stock: " + ex.getMessage());
+                } catch (NegocioException ex) {
+                    DialogoConfirmacion.error(this, ex.getMessage());
                 }
             }
         });
@@ -617,11 +597,11 @@ public class PanelInicioAdmin extends JPanel {
             Producto sel = tablaProductos.getSeleccionado();
             if (sel != null) {
                 try {
-                    productoDAO.actualizarStock(sel.getIdProducto(), sel.getStock() + 10);
+                    catalogoController.ajustarStock(sel.getIdProducto(), sel.getStock() + 10);
                     recargarDesdeBD();
-                    Toast.exito(this, "Repuestos +10 de " + sel.getNombre() + " en BD.");
-                } catch (SQLException ex) {
-                    DialogoConfirmacion.error(this, "Error al reponer stock: " + ex.getMessage());
+                    Toast.exito(this, "Repuestos +10 de " + sel.getNombre() + ".");
+                } catch (NegocioException ex) {
+                    DialogoConfirmacion.error(this, ex.getMessage());
                 }
             }
         });
@@ -630,11 +610,11 @@ public class PanelInicioAdmin extends JPanel {
             Producto sel = tablaProductos.getSeleccionado();
             if (sel != null && DialogoConfirmacion.confirmar(this, "Dar de Baja", "¿Dar de baja '" + sel.getNombre() + "'?")) {
                 try {
-                    productoDAO.cambiarEstado(sel.getIdProducto(), false);
+                    catalogoController.darDeBaja(sel.getIdProducto());
                     recargarDesdeBD();
-                    Toast.info(this, "Producto dado de baja en BD.");
-                } catch (SQLException ex) {
-                    DialogoConfirmacion.error(this, "Error al dar de baja: " + ex.getMessage());
+                    Toast.info(this, "Producto dado de baja.");
+                } catch (NegocioException ex) {
+                    DialogoConfirmacion.error(this, ex.getMessage());
                 }
             }
         });
@@ -711,18 +691,14 @@ public class PanelInicioAdmin extends JPanel {
     }
 
     private void recargarDesdeBD() {
-        usuarios = usuarioController.obtenerTodosLosUsuarios();
+        int descuadres = 0;
         try {
-            recargas = recargaDAO.listarTodas();
-        } catch (SQLException e) {
-            System.err.println("Error al cargar recargas de BD: " + e.getMessage());
-            recargas = new ArrayList<>();
-        }
-        try {
-            productos = productoDAO.listarTodos();
-        } catch (SQLException e) {
-            System.err.println("Error al cargar productos de BD: " + e.getMessage());
-            productos = new ArrayList<>();
+            usuarios = usuarioController.listarTodos();
+            recargas = recargaController.listarTodas();
+            productos = catalogoController.listarTodos();
+            descuadres = reporteController.descuadres().size();
+        } catch (NegocioException e) {
+            DialogoConfirmacion.error(this, e.getMessage());
         }
 
         List<Usuario> listaActivos = usuarios.stream().filter(Usuario::isEstado).toList();
@@ -749,5 +725,6 @@ public class PanelInicioAdmin extends JPanel {
         lblKpiInactivos.setText(String.valueOf(listaInactivos.size()));
         lblKpiRecargas.setText(String.valueOf(recargas.stream().filter(r -> r.estado() == EstadoRecarga.PENDIENTE).count()));
         lblKpiStockBajo.setText(String.valueOf(productos.stream().filter(p -> p.isActivo() && p.getStock() <= 10).count()));
+        lblKpiDescuadres.setText(String.valueOf(descuadres));
     }
 }

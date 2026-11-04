@@ -4,17 +4,18 @@
  */
 package com.mycompany.escuelavirtual.view;
 
-import com.mycompany.escuelavirtual.dao.BilleteraDAO;
-import com.mycompany.escuelavirtual.dao.LogroDAO;
-import com.mycompany.escuelavirtual.dao.LogroDAO.DetalleLogro;
-import com.mycompany.escuelavirtual.dao.MovimientoDAO;
-import com.mycompany.escuelavirtual.dao.MovimientoDAO.DetalleMovimiento;
-import com.mycompany.escuelavirtual.dao.ProductoDAO;
+import com.mycompany.escuelavirtual.controller.BilleteraController;
+import com.mycompany.escuelavirtual.controller.CanjeController;
+import com.mycompany.escuelavirtual.controller.CatalogoController;
+import com.mycompany.escuelavirtual.controller.CompraController;
 import com.mycompany.escuelavirtual.model.Billetera;
+import com.mycompany.escuelavirtual.model.DetalleLogro;
+import com.mycompany.escuelavirtual.model.DetalleMovimiento;
 import com.mycompany.escuelavirtual.model.Producto;
 import com.mycompany.escuelavirtual.model.Usuario;
 import com.mycompany.escuelavirtual.model.enums.TipoMoneda;
 import com.mycompany.escuelavirtual.util.Formato;
+import com.mycompany.escuelavirtual.util.NegocioException;
 import com.mycompany.escuelavirtual.util.ui.DialogoConfirmacion;
 import com.mycompany.escuelavirtual.util.ui.Estilos;
 import com.mycompany.escuelavirtual.util.ui.PanelTablaBase;
@@ -23,7 +24,6 @@ import java.awt.BorderLayout;
 import java.awt.FlowLayout;
 import java.awt.GridLayout;
 import java.math.BigDecimal;
-import java.sql.SQLException;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -91,14 +91,11 @@ public class PanelInicioEstudiante extends JPanel {
         }
     }
 
-    private final BilleteraDAO billeteraDAO = new BilleteraDAO();
-    private final ProductoDAO productoDAO = new ProductoDAO();
-    private final MovimientoDAO movimientoDAO = new MovimientoDAO();
-    private final LogroDAO logroDAO = new LogroDAO();
+    private final BilleteraController billeteraController;
+    private final CatalogoController catalogoController;
+    private final CompraController compraController;
+    private final CanjeController canjeController;
     private final Usuario estudianteActual;
-
-    private BigDecimal saldoDinero = BigDecimal.ZERO;
-    private int saldoMonedas = 0;
 
     private final JLabel lblSaldoDinero = Estilos.titulo("");
     private final JLabel lblSaldoMonedas = Estilos.titulo("");
@@ -113,6 +110,10 @@ public class PanelInicioEstudiante extends JPanel {
 
     public PanelInicioEstudiante(Usuario estudianteActual) {
         this.estudianteActual = estudianteActual;
+        this.billeteraController = new BilleteraController(estudianteActual);
+        this.catalogoController = new CatalogoController(estudianteActual);
+        this.compraController = new CompraController(estudianteActual);
+        this.canjeController = new CanjeController(estudianteActual);
 
         setLayout(new BorderLayout(0, Estilos.ESPACIO));
         setBackground(Estilos.FONDO);
@@ -181,45 +182,26 @@ public class PanelInicioEstudiante extends JPanel {
                 return;
             }
             int cant = (Integer) spnCantidad.getValue();
-            if (prod.stock < cant) {
-                DialogoConfirmacion.error(this, "No hay stock suficiente para '" + prod.nombre + "'.");
+            TipoMoneda metodo = (TipoMoneda) cboMetodo.getSelectedItem();
+            boolean conDinero = metodo == TipoMoneda.DINERO;
+            if (!DialogoConfirmacion.confirmar(this,
+                    conDinero ? "Confirmar Compra" : "Confirmar Canje",
+                    "¿" + (conDinero ? "Comprar " : "Canjear ") + cant + "x " + prod.nombre
+                    + totalLegible(prod, metodo, cant) + "?")) {
                 return;
             }
-            TipoMoneda metodo = (TipoMoneda) cboMetodo.getSelectedItem();
             try {
-                if (metodo == TipoMoneda.DINERO) {
-                    if (prod.precioDinero == null) {
-                        DialogoConfirmacion.error(this, "Este artículo solo se puede canjear con MONEDAS.");
-                        return;
-                    }
-                    BigDecimal total = prod.precioDinero.multiply(BigDecimal.valueOf(cant));
-                    if (saldoDinero.compareTo(total) < 0) {
-                        DialogoConfirmacion.error(this, "Saldo insuficiente en Soles para realizar la compra.");
-                        return;
-                    }
-                    if (DialogoConfirmacion.confirmar(this, "Confirmar Compra", "¿Comprar " + cant + "x " + prod.nombre + " por " + Formato.dinero(total) + "?")) {
-                        movimientoDAO.registrarCompraOCanje(estudianteActual.getIdUsuario(), prod.id, metodo, cant, total);
-                        recargarDesdeBD();
-                        Toast.exito(this, "¡Compra realizada en BD con éxito!");
-                    }
+                // El saldo, el stock y la validez del método se comprueban en el
+                // servicio, dentro de la transacción; aquí solo se informa.
+                if (conDinero) {
+                    compraController.comprar(prod.id, cant);
                 } else {
-                    if (prod.precioMonedas == null) {
-                        DialogoConfirmacion.error(this, "Este producto solo se compra con DINERO (S/).");
-                        return;
-                    }
-                    int totalMonedas = prod.precioMonedas * cant;
-                    if (saldoMonedas < totalMonedas) {
-                        DialogoConfirmacion.error(this, "No tienes suficientes monedas especiales para este canje.");
-                        return;
-                    }
-                    if (DialogoConfirmacion.confirmar(this, "Confirmar Canje", "¿Canjear " + cant + "x " + prod.nombre + " por " + Formato.monedas(totalMonedas) + "?")) {
-                        movimientoDAO.registrarCompraOCanje(estudianteActual.getIdUsuario(), prod.id, metodo, cant, new BigDecimal(totalMonedas));
-                        recargarDesdeBD();
-                        Toast.exito(this, "¡Recompensa canjeada en BD con éxito!");
-                    }
+                    canjeController.canjear(prod.id, cant);
                 }
-            } catch (SQLException ex) {
-                DialogoConfirmacion.error(this, "Error en la base de datos: " + ex.getMessage());
+                recargarDesdeBD();
+                Toast.exito(this, conDinero ? "¡Compra realizada!" : "¡Recompensa canjeada!");
+            } catch (NegocioException ex) {
+                DialogoConfirmacion.error(this, ex.getMessage());
             }
         });
 
@@ -231,6 +213,15 @@ public class PanelInicioEstudiante extends JPanel {
         cuadro.add(pieCompra, BorderLayout.SOUTH);
 
         return cuadro;
+    }
+
+    private static String totalLegible(ItemTienda prod, TipoMoneda metodo, int cantidad) {
+        if (metodo == TipoMoneda.DINERO) {
+            return prod.precioDinero == null ? ""
+                    : " por " + Formato.dinero(prod.precioDinero.multiply(BigDecimal.valueOf(cantidad)));
+        }
+        return prod.precioMonedas == null ? ""
+                : " por " + Formato.monedas(prod.precioMonedas * cantidad);
     }
 
     private JPanel crearCuadroHistoriales() {
@@ -271,34 +262,36 @@ public class PanelInicioEstudiante extends JPanel {
             return;
         }
         try {
-            Billetera b = billeteraDAO.obtenerOCrearPorEstudiante(estudianteActual.getIdUsuario());
-            saldoDinero = b.getSaldoDinero();
-            saldoMonedas = b.getSaldoMonedas();
-            lblSaldoDinero.setText(Formato.dinero(saldoDinero));
-            lblSaldoMonedas.setText(Formato.monedas(saldoMonedas));
+            Billetera b = billeteraController.consultarSaldoPropio();
+            lblSaldoDinero.setText(Formato.dinero(b.getSaldoDinero()));
+            lblSaldoMonedas.setText(Formato.monedas(b.getSaldoMonedas()));
 
             catalogo.clear();
-            for (Producto p : productoDAO.listarActivos()) {
-                catalogo.add(new ItemTienda(p.getIdProducto(), p.getNombre(), p.getPrecioDinero(), p.getPrecioMonedas(), p.getStock()));
+            for (Producto p : catalogoController.listarActivos()) {
+                catalogo.add(new ItemTienda(p.getIdProducto(), p.getNombre(), p.getPrecioDinero(),
+                        p.getPrecioMonedas(), p.getStock()));
             }
 
             misLogros.clear();
-            for (DetalleLogro dl : logroDAO.listarPorEstudiante(estudianteActual.getIdUsuario())) {
+            for (DetalleLogro dl : billeteraController.listarLogros(estudianteActual.getIdUsuario())) {
                 misLogros.add(new ItemLogro(dl.fecha(), dl.tipo(), dl.descripcion(), dl.nombreDocente(), dl.monedas()));
             }
 
             misMovimientos.clear();
-            for (DetalleMovimiento dm : movimientoDAO.listarPorEstudiante(estudianteActual.getIdUsuario())) {
-                String descTotal = dm.metodoPago() == TipoMoneda.DINERO ? Formato.dinero(dm.montoTotal()) : Formato.monedas(dm.montoTotal().intValue());
-                misMovimientos.add(new ItemMovimiento(dm.fecha(), dm.nombreProducto(), dm.metodoPago(), dm.cantidad(), descTotal));
+            for (DetalleMovimiento dm : billeteraController.listarMovimientos(estudianteActual.getIdUsuario())) {
+                String descTotal = dm.metodoPago() == TipoMoneda.DINERO
+                        ? Formato.dinero(dm.montoTotal())
+                        : Formato.monedas(dm.montoTotal().intValue());
+                misMovimientos.add(new ItemMovimiento(dm.fecha(), dm.nombreProducto(), dm.metodoPago(),
+                        dm.cantidad(), descTotal));
             }
 
             tablaTienda.setDatos(catalogo);
             tablaLogros.setDatos(misLogros);
             tablaMovimientos.setDatos(misMovimientos);
 
-        } catch (SQLException e) {
-            DialogoConfirmacion.error(this, "Error cargando billetera del estudiante: " + e.getMessage());
+        } catch (NegocioException e) {
+            DialogoConfirmacion.error(this, e.getMessage());
         }
     }
 }
