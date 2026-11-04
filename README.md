@@ -14,17 +14,19 @@ proyecta. Las diferencias entre ambos están listadas en
 | Parte | Estado |
 |---|---|
 | Inicio de sesión contra SQL Server, con bloqueo por intentos fallidos | Operativo |
-| Árbol de navegación por rol (M01–M09) | Operativo |
+| Navegación entre módulos | **No hay.** Cada rol entra directamente a su única pantalla |
 | Gestión de usuarios: alta, edición, baja lógica, reactivación y vínculo padre–hijo | Operativo |
-| Billetera, recargas, tienda, logros y catálogo | Operativos **desde el panel de inicio (M01)** de cada rol |
-| Pantallas propias de M02 a M09 | Prototipo: cada nodo abre un panel que nombra el módulo y la tarea que lo construirá |
+| Billetera, recargas, tienda, logros y catálogo | Operativos **dentro de la pantalla de inicio** de cada rol |
+| Pantallas propias de M02 a M09 | No existen. `PanelModuloPrototipo` quedó sin usar al retirarse el árbol de navegación |
 | Reportes y exportación | Solo el botón «Exportar CSV» de cada tabla; no hay módulo de reportes |
 | Notificaciones por correo o WhatsApp | No existe |
 | Empaquetado JAR e instalador | No existe (T14) |
 
-Las 9 pantallas de módulo que exige el criterio de salida de la Etapa 1 existen, pero 8 de
-ellas son prototipos: la funcionalidad real vive en el panel de inicio de cada rol. El manual
-de usuario lo explica pantalla por pantalla.
+La ventana principal muestra una sola pantalla, la del rol que inició sesión, y ahí está toda la
+funcionalidad construida. El árbol de módulos que abría las 9 pantallas prototipo se retiró el
+03/11/2026: el criterio de salida «9 paneles prototipo» de la Etapa 1 deja de cumplirse y las
+capturas de evidencia de T11 y T12 ya no reflejan la ventana. El manual de usuario describe lo
+que hay hoy.
 
 ## 2. Requisitos
 

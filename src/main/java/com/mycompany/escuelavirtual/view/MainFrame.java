@@ -3,13 +3,11 @@ package com.mycompany.escuelavirtual.view;
 import com.mycompany.escuelavirtual.model.Usuario;
 import com.mycompany.escuelavirtual.session.SessionManager;
 import com.mycompany.escuelavirtual.util.Formato;
-import com.mycompany.escuelavirtual.util.Modulo;
 import com.mycompany.escuelavirtual.util.ui.DialogoConfirmacion;
 import com.mycompany.escuelavirtual.util.ui.Estilos;
 import com.mycompany.escuelavirtual.util.ui.Toast;
 
 import java.awt.BorderLayout;
-import java.awt.CardLayout;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
 import javax.swing.BorderFactory;
@@ -17,29 +15,22 @@ import javax.swing.JButton;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
-import javax.swing.JScrollPane;
-import javax.swing.JTree;
 import javax.swing.WindowConstants;
-import javax.swing.tree.DefaultMutableTreeNode;
-import javax.swing.tree.DefaultTreeSelectionModel;
-import javax.swing.tree.TreePath;
-import javax.swing.tree.TreeSelectionModel;
 
 /**
- * Ventana principal: cabecera, zona central con {@link CardLayout} y barra de
- * estado.
+ * Ventana principal: cabecera, panel de inicio del rol y barra de estado.
  *
- * <p>El {@code JTree} de la izquierda muestra solo los módulos que el rol ve
- * según {@link Modulo}, que traduce el anexo C del plan. Cada nodo abre su
- * tarjeta en el {@link CardLayout}: el módulo M01 abre el panel de inicio del
- * rol y el resto abre su pantalla prototipo (T09, defecto D-T11-01).</p>
+ * <p>La ventana muestra una sola pantalla, la del módulo M01, que es la única
+ * construida: el panel de inicio de cada rol. Las pantallas prototipo de M02 a
+ * M09 y el árbol de navegación que las abría se retiraron de la ventana; la
+ * matriz de módulos por rol sigue en {@code Modulo} y la leen las pruebas
+ * CP-01 y CP-18.</p>
  */
 public class MainFrame extends JFrame {
 
     private static final long serialVersionUID = 1L;
 
     private final SessionManager sesion;
-    private final JPanel centro = new JPanel(new CardLayout());
 
     public MainFrame(SessionManager sesion) {
         super("Escuela Virtual");
@@ -49,8 +40,6 @@ public class MainFrame extends JFrame {
         setLayout(new BorderLayout());
         add(crearCabecera(usuario), BorderLayout.NORTH);
 
-        centro.setBackground(Estilos.FONDO);
-
         // Se inyecta el usuario a cada panel para que filtren la BD
         JPanel panelInicio = switch (usuario.getRol()) {
             case ADMIN -> new PanelInicioAdmin(usuario);
@@ -59,53 +48,13 @@ public class MainFrame extends JFrame {
             case DOCENTE -> new PanelInicioDocente(usuario);
         };
 
-        add(crearArbolModulos(usuario, panelInicio), BorderLayout.WEST);
-        add(centro, BorderLayout.CENTER);
+        add(panelInicio, BorderLayout.CENTER);
         add(crearBarraEstado(usuario), BorderLayout.SOUTH);
 
         setDefaultCloseOperation(WindowConstants.EXIT_ON_CLOSE);
         setMinimumSize(new Dimension(1024, 640));
         setSize(1200, 720);
         setLocationRelativeTo(null);
-    }
-
-    /**
-     * Árbol de módulos del rol y su tarjeta en el {@link CardLayout}.
-     *
-     * <p>Los nodos salen de {@link Modulo#visiblesPara}, de modo que el árbol
-     * y las pruebas CP-01 y CP-18 leen la misma matriz.</p>
-     */
-    private JScrollPane crearArbolModulos(Usuario usuario, JPanel panelInicio) {
-        DefaultMutableTreeNode raiz = new DefaultMutableTreeNode("Módulos");
-        for (Modulo modulo : Modulo.visiblesPara(usuario.getRol())) {
-            raiz.add(new DefaultMutableTreeNode(modulo));
-            centro.add(modulo == Modulo.M01 ? panelInicio : new PanelModuloPrototipo(modulo),
-                    modulo.name());
-        }
-
-        JTree arbol = new JTree(raiz);
-        arbol.setName("arbolModulos");
-        arbol.setFont(Estilos.FUENTE_NORMAL);
-        arbol.setBackground(Estilos.FONDO_PANEL);
-        arbol.setRootVisible(false);
-        arbol.setShowsRootHandles(false);
-        TreeSelectionModel seleccion = new DefaultTreeSelectionModel();
-        seleccion.setSelectionMode(TreeSelectionModel.SINGLE_TREE_SELECTION);
-        arbol.setSelectionModel(seleccion);
-        arbol.addTreeSelectionListener(e -> {
-            TreePath ruta = arbol.getSelectionPath();
-            if (ruta != null
-                    && ((DefaultMutableTreeNode) ruta.getLastPathComponent())
-                            .getUserObject() instanceof Modulo modulo) {
-                ((CardLayout) centro.getLayout()).show(centro, modulo.name());
-            }
-        });
-        arbol.setSelectionRow(0);
-
-        JScrollPane marco = new JScrollPane(arbol);
-        marco.setPreferredSize(new Dimension(220, 0));
-        marco.setBorder(BorderFactory.createMatteBorder(0, 0, 0, 1, Estilos.BORDE));
-        return marco;
     }
 
     private JPanel crearCabecera(Usuario usuario) {

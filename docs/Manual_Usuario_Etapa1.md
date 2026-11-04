@@ -8,8 +8,7 @@
 | Documento técnico | [Arquitectura_Real_Etapa1.md](Arquitectura_Real_Etapa1.md) |
 
 Este manual describe la aplicación construida, no las pantallas previstas para etapas
-posteriores. Donde una pantalla todavía es un prototipo, se dice y se indica dónde está
-mientras tanto la función real.
+posteriores. Cada rol tiene una única pantalla, y es la que se describe aquí.
 
 ---
 
@@ -46,47 +45,38 @@ principal. Si no:
 
 ## 3. La ventana principal
 
-Es igual para los cuatro roles y tiene cuatro zonas:
+Es igual para los cuatro roles y tiene tres zonas:
 
 1. **Cabecera azul.** El título «Escuela Virtual», su nombre con su rol y el botón **Cerrar
    sesión**, que pide confirmación y devuelve a la pantalla de inicio de sesión.
-2. **Árbol de módulos, a la izquierda.** Solo los módulos que su rol puede ver. Al hacer clic en
-   un nodo, la zona central cambia a esa pantalla. Al entrar queda seleccionado el primer nodo.
-3. **Zona central.** La pantalla del módulo seleccionado.
-4. **Barra de estado inferior.** El correo de la sesión y la fecha y hora de su último acceso.
+2. **Zona central.** Su pantalla de trabajo, que ocupa toda la ventana y es distinta para cada
+   rol. Es lo que describen las secciones 5 a 8.
+3. **Barra de estado inferior.** El correo de la sesión y la fecha y hora de su último acceso.
    Si es su primer ingreso dice «primero».
 
 > **Sobre la hora:** la barra de estado y las fechas de las tablas muestran la hora que registra
 > el servidor, sin convertirla a la hora local. Si el servidor está configurado en UTC, verá su
 > acceso de las 14:37 como «19:37». Es un defecto conocido y pendiente (D-T11-03).
 
-### Módulos que ve cada rol
+### Una sola pantalla por rol
 
-| Módulo | Administrador | Padre | Estudiante | Docente |
-|---|:---:|:---:|:---:|:---:|
-| M01 · Inicio y sesión | Sí | Sí | Sí | Sí |
-| M02 · Usuarios | Sí | — | — | — |
-| M03 · Billetera | Sí | Sí | Sí | — |
-| M04 · Recargas | Sí | Sí | — | — |
-| M05 · Tienda y compras | Sí | — | Sí | — |
-| M06 · Logros | Sí | Sí | Sí | Sí |
-| M07 · Catálogo y canjes | Sí | — | Sí | — |
-| M08 · Supervisión | Sí | Sí | — | Sí |
-| M09 · Reportes y CSV | Sí | — | — | — |
-| **Total de nodos** | **9** | **5** | **5** | **3** |
+La aplicación **no tiene menú ni árbol de navegación**: al entrar ve directamente la pantalla de
+su rol, y ahí está todo lo que puede hacer. No hay nada más que buscar.
 
-Capturas: [mainframe-ADMIN.png](../reports/T12/mainframe-ADMIN.png) ·
-[mainframe-PADRE.png](../reports/T12/mainframe-PADRE.png) ·
-[mainframe-ESTUDIANTE.png](../reports/T12/mainframe-ESTUDIANTE.png) ·
-[mainframe-DOCENTE.png](../reports/T12/mainframe-DOCENTE.png)
+| Rol | Qué incluye su pantalla |
+|---|---|
+| Administrador | Indicadores, usuarios, recargas por autorizar, monedas por mérito y catálogo |
+| Padre o madre | Sus hijos, los saldos de cada uno, solicitud de recarga e historial de compras |
+| Estudiante | Sus dos saldos, la tienda, sus logros y su historial de compras y canjes |
+| Docente | Otorgar monedas por mérito, estudiantes activos y los logros que ha registrado |
 
-### Importante: dónde están las funciones
+El proyecto define nueve módulos (M01 Inicio, M02 Usuarios, M03 Billetera, M04 Recargas, M05
+Tienda, M06 Logros, M07 Catálogo, M08 Supervisión y M09 Reportes). Las funciones de esos módulos
+que ya existen están integradas en la pantalla de su rol; el resto se construirá más adelante.
 
-**Solo el módulo M01 tiene su pantalla real.** Los nodos M02 a M09 abren una pantalla prototipo
-que nombra el módulo y la tarea que lo construirá
-([captura](../reports/T12/modulo-prototipo-ADMIN.png)). Todo lo que hoy se puede hacer —gestionar
-usuarios, recargar, comprar, otorgar monedas— se hace **desde M01**, que abre un panel distinto
-para cada rol. Las secciones 4 a 7 describen ese panel.
+> Las capturas de [reports/T11](../reports/T11/) y [reports/T12](../reports/T12/) son evidencia de
+> las pruebas y muestran la versión anterior de la ventana, que tenía una lista de módulos a la
+> izquierda. Esa lista se retiró; el contenido de la zona central es el mismo.
 
 ## 4. Cómo usar las tablas
 
@@ -111,7 +101,7 @@ y las confirmaciones aparecen como diálogo, y hay que cerrarlos.
 
 ## 5. Administrador
 
-M01 abre el **Panel de Administración General**, con cinco indicadores arriba y tres pestañas.
+Su pantalla es el **Panel de Administración General**: cinco indicadores arriba y tres pestañas.
 
 ### Indicadores
 
@@ -200,7 +190,7 @@ con precio en monedas, se canjea; con los dos, el estudiante elige.
 
 ## 6. Padre o madre
 
-M01 abre **Supervisión Familiar y Recargas**, con cuatro cuadros:
+Su pantalla es **Supervisión Familiar y Recargas**, con cuatro cuadros:
 
 1. **Mis Hijos Registrados.** Sus hijos vinculados y activos, con grado, sección, saldo en soles
    y monedas. Al seleccionar uno, los cuadros 2 y 4 se actualizan.
@@ -221,13 +211,13 @@ pantalla: intentar consultar la billetera, los movimientos o los logros de un al
 hijo devuelve «No tiene permiso para realizar esta operación.». Si la lista sale vacía, es que no
 tiene hijos vinculados: pídaselo al administrador.
 
-Captura: [mainframe-PADRE.png](../reports/T12/mainframe-PADRE.png)
+Captura (versión anterior, con la lista de módulos a la izquierda): [mainframe-PADRE.png](../reports/T12/mainframe-PADRE.png)
 
 ---
 
 ## 7. Estudiante
 
-M01 abre **Mi Billetera, Tienda y Logros**. Arriba, dos tarjetas: **Saldo para Gastos Escolares
+Su pantalla es **Mi Billetera, Tienda y Logros**. Arriba, dos tarjetas: **Saldo para Gastos Escolares
 (Soles)** y **Monedas Especiales de Recompensa**.
 
 A la izquierda, **Tienda Escolar y Catálogo de Recompensas**, con el stock en vivo. Las columnas
@@ -258,13 +248,13 @@ cantidad y total).
 
 Solo ve sus propios datos. No puede consultar la billetera ni el historial de otro estudiante.
 
-Captura: [mainframe-ESTUDIANTE.png](../reports/T12/mainframe-ESTUDIANTE.png)
+Captura (versión anterior, con la lista de módulos a la izquierda): [mainframe-ESTUDIANTE.png](../reports/T12/mainframe-ESTUDIANTE.png)
 
 ---
 
 ## 8. Docente
 
-M01 abre **Panel Docente - Registro de Logros e Incentivos**, con tres zonas:
+Su pantalla es el **Panel Docente - Registro de Logros e Incentivos**, con tres zonas:
 
 1. **Otorgar Monedas por Mérito** (formulario, a la izquierda).
 2. **Estudiantes Activos**: todos los estudiantes activos del sistema, con ID, nombre, grado y
@@ -288,7 +278,7 @@ registrado con su nombre: el estudiante y su padre lo ven en el historial.
 estudiantes. Su panel no los muestra y el servidor rechaza la consulta aunque se intente por otra
 vía. Solo registra logros y ve los que él mismo ha otorgado.
 
-Captura: [mainframe-DOCENTE.png](../reports/T12/mainframe-DOCENTE.png)
+Captura (versión anterior, con la lista de módulos a la izquierda): [mainframe-DOCENTE.png](../reports/T12/mainframe-DOCENTE.png)
 
 ---
 
@@ -304,8 +294,8 @@ administrador.
 dibuja la pantalla, así que con la base de datos lenta la ventana se congela mientras carga.
 Espere: no se ha cerrado. Defecto conocido D-T11-02.
 
-**Hice clic en M03, M05 o cualquier otro módulo y solo veo un texto.** Es correcto: esas
-pantallas son prototipos de esta etapa. La función real está en M01.
+**No veo un menú para ir a otras pantallas.** No lo hay: su rol tiene una sola pantalla y ya la
+está viendo. Ver la sección 3.
 
 **La hora que veo no es la mía.** Ver el aviso de la sección 3.
 

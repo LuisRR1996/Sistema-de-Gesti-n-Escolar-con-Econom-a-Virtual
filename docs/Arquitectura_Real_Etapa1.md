@@ -99,15 +99,18 @@ del hilo de interfaz y entrega el resultado ya en el EDT.
 | Clase | Papel |
 |---|---|
 | `LoginFrame` + `PanelLogin` | Inicio de sesión. Valida formato antes de llamar al servicio; limpia el `char[]` de la clave tras usarlo |
-| `MainFrame` | Cabecera, `JTree` de módulos, zona central con `CardLayout` y barra de estado. Construye una tarjeta por módulo visible |
-| `PanelInicioAdmin`, `PanelInicioPadre`, `PanelInicioEstudiante`, `PanelInicioDocente` | La funcionalidad real de la etapa. Se montan en la tarjeta de M01 |
-| `PanelModuloPrototipo` | Tarjeta de M02 a M09: nombra el módulo y la tarea del plan que construirá su pantalla |
+| `MainFrame` | Cabecera, panel de inicio del rol ocupando toda la zona central, y barra de estado. **Sin navegación**: muestra una sola pantalla |
+| `PanelInicioAdmin`, `PanelInicioPadre`, `PanelInicioEstudiante`, `PanelInicioDocente` | La funcionalidad real de la etapa. Es lo único que la ventana muestra |
+| `PanelModuloPrototipo` | Pantalla prototipo de M02 a M09. **Ya no se instancia**: quedó sin usar al retirarse el árbol de navegación |
 | `PanelTablaBase<T>` | Tabla reutilizable: búsqueda incremental, filtro por rango de fechas (oculto en todos los usos actuales), estado vacío y exportación a CSV con BOM UTF-8 y separador `;` de las filas visibles |
 | `PanelFormularioBase` | Formulario con etiquetas, errores por campo y bloqueo durante una operación |
 | `Estilos`, `Toast`, `DialogoConfirmacion` | Paleta y tipografías, avisos no modales, y diálogos de confirmación y error |
 
 `MainFrame` resuelve el panel de inicio con un `switch` exhaustivo sobre `Rol`: añadir un rol
 rompe la compilación en lugar de dejar un hueco en tiempo de ejecución.
+
+La ventana no tiene árbol de módulos ni `CardLayout`: se retiraron el 03/11/2026 a pedido del
+equipo, para que la pantalla del rol ocupe el ancho completo. Las consecuencias están en §7.
 
 ## 4. Esquema de base de datos, tal como lo usa el código
 
@@ -212,9 +215,12 @@ activo.
 
 ## 7. Navegación
 
-`Modulo` es la matriz de módulos visibles por rol, sin ninguna dependencia de Swing. El `JTree`
-de `MainFrame` y las pruebas de navegación leen el mismo enumerado, de modo que no puedan
-discrepar.
+**La aplicación no tiene navegación.** `MainFrame` muestra el panel de inicio del rol y nada
+más; el `JTree` de módulos y el `CardLayout` que abría sus tarjetas se retiraron el 03/11/2026.
+
+`Modulo` sigue siendo la matriz de módulos visibles por rol, sin ninguna dependencia de Swing, y
+lo leen las pruebas CP-01 y CP-18. Hoy ninguna pantalla lo consume: es la especificación de la
+navegación que la Etapa 2 debe reconstruir cuando M02–M09 tengan pantalla propia.
 
 | Módulo | Título | Roles que lo ven |
 |---|---|---|
@@ -228,13 +234,13 @@ discrepar.
 | M08 | Supervisión | PADRE, DOCENTE, ADMIN |
 | M09 | Reportes y CSV | ADMIN |
 
-Nodos por rol: ADMIN 9, PADRE 5, ESTUDIANTE 5, DOCENTE 3.
+Módulos por rol según el enumerado: ADMIN 9, PADRE 5, ESTUDIANTE 5, DOCENTE 3.
 
-**Solo M01 tiene pantalla propia.** M02 a M09 abren `PanelModuloPrototipo`. La funcionalidad de
-esos módulos que ya existe está implementada en los paneles de inicio: el ABU de usuarios, la
-aprobación de recargas y el catálogo en el del administrador; la billetera, la tienda y los
-logros en el del estudiante; la supervisión y la solicitud de recarga en el del padre; el registro
-de logros en el del docente.
+**Solo M01 tiene pantalla, y es la única accesible.** La funcionalidad de los demás módulos que
+ya existe está implementada dentro de los paneles de inicio: el ABU de usuarios, la aprobación de
+recargas y el catálogo en el del administrador; la billetera, la tienda y los logros en el del
+estudiante; la supervisión y la solicitud de recarga en el del padre; el registro de logros en el
+del docente. `PanelModuloPrototipo` ya no se instancia desde ningún sitio.
 
 Esto tiene una consecuencia de diseño que la Etapa 2 debe deshacer: los paneles de inicio son
 pantallas grandes y multipropósito (`PanelInicioAdmin` tiene 730 líneas y tres pestañas). Al
@@ -288,5 +294,6 @@ plan, no renombrar el código a estas alturas de la etapa. Los puntos 7 y 8 son 
 | 6 | **Sin gestión de contraseñas** | Medio | No hay cambio ni restablecimiento de clave; al editar un usuario el campo se deshabilita |
 | 7 | **`EscuelaVirtual.java` duplica el punto de entrada** | Bajo | Residuo de la plantilla de NetBeans; solo delega en `Main` |
 | 8 | **Paneles de inicio multipropósito** | Bajo hoy, alto al crecer | `PanelInicioAdmin` concentra tres pestañas y 730 líneas. Las pantallas de M02–M09 deben absorber esa lógica, no copiarla |
-| 9 | **Sin empaquetado** | — | No hay JAR ejecutable ni instalador; el `pom.xml` no configura plugins de empaquetado. Es T14 |
-| 10 | **Las reglas de dependencia entre capas se verifican a ojo** | Bajo | El plan contempla ArchUnit como opción; no está |
+| 9 | **Sin navegación y con una pantalla huérfana** | Medio | Al retirarse el árbol de módulos, M02–M09 quedaron inalcanzables y `PanelModuloPrototipo` sin usar. Decae el criterio de salida «9 paneles prototipo» de la Etapa 1 y las capturas de evidencia de T11/T12 ya no reflejan la ventana. La Etapa 2 debe decidir qué navegación pone en su lugar |
+| 10 | **Sin empaquetado** | — | No hay JAR ejecutable ni instalador; el `pom.xml` no configura plugins de empaquetado. Es T14 |
+| 11 | **Las reglas de dependencia entre capas se verifican a ojo** | Bajo | El plan contempla ArchUnit como opción; no está |
