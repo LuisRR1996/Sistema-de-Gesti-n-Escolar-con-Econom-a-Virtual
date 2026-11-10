@@ -30,4 +30,9 @@ public class LogroController {
     public List<DetalleLogro> listarOtorgadosPorMi() {
         return logroService.listarOtorgadosPor(actor);
     }
+    
+    public List<DetalleLogro> listarTodos() {
+        return logroService.listarTodos(actor);
+    }
+    
 }

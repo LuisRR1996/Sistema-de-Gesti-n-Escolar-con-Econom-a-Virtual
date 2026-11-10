@@ -38,6 +38,19 @@ public class LogroDAO extends BaseDAO {
     public List<DetalleLogro> listarPorOtorgante(int idOtorgante) throws SQLException {
         return listar(SELECCION + " WHERE l.id_docente = ?" + ORDEN, idOtorgante);
     }
+    
+    /**
+     * Todos los logros registrados en el sistema (vista Admin).
+     */
+    public List<DetalleLogro> listarTodos() throws SQLException {
+        List<DetalleLogro> lista = new ArrayList<>();
+        try (Connection cn = connection(); PreparedStatement ps = cn.prepareStatement(SELECCION + ORDEN); ResultSet rs = ps.executeQuery()) {
+            while (rs.next()) {
+                lista.add(mapear(rs));
+            }
+        }
+        return lista;
+    }
 
     /**
      * Inserta el logro atribuido a quien lo otorga realmente (RN-14); si el

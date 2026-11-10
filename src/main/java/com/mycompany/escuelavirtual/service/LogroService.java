@@ -80,4 +80,13 @@ public class LogroService extends ServicioBase {
         Permisos.exigir(actor, Accion.VER_LOGROS_OTORGADOS);
         return consultar(() -> logroDAO.listarPorOtorgante(actor.getIdUsuario()));
     }
+    
+    /**
+     * Todos los logros del colegio para el panel del administrador.
+     */
+    public List<DetalleLogro> listarTodos(Usuario actor) {
+        Permisos.exigir(actor, Accion.VER_LOGROS_ESTUDIANTE);
+        return consultar(() -> logroDAO.listarTodos());
+    }
+    
 }

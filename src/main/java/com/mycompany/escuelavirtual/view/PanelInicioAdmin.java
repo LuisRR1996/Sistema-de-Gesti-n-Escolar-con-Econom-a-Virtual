@@ -20,15 +20,20 @@ import com.mycompany.escuelavirtual.util.ui.DialogoConfirmacion;
 import com.mycompany.escuelavirtual.util.ui.Estilos;
 import com.mycompany.escuelavirtual.util.ui.PanelTablaBase;
 import com.mycompany.escuelavirtual.util.ui.Toast;
+import com.mycompany.escuelavirtual.model.DetalleLogro;
+
 import java.awt.BorderLayout;
 import java.awt.FlowLayout;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.GridLayout;
 import java.awt.Insets;
+
 import java.math.BigDecimal;
+
 import java.util.ArrayList;
 import java.util.List;
+
 import javax.swing.BorderFactory;
 import javax.swing.JButton;
 import javax.swing.JComboBox;
@@ -72,6 +77,7 @@ public class PanelInicioAdmin extends JPanel {
     private PanelTablaBase<Usuario> tablaInactivos;
     private PanelTablaBase<DetalleRecarga> tablaRecargas;
     private PanelTablaBase<Producto> tablaProductos;
+    private PanelTablaBase<DetalleLogro> tablaLogros;
     private JComboBox<ItemComboUsuario> cboAlumnoMonedas;
     private final JComboBox<ItemComboUsuario> cboPadreU = new JComboBox<>();
 
@@ -433,13 +439,18 @@ public class PanelInicioAdmin extends JPanel {
         botonesRecarga.add(btnAprobar);
         cuadroRecargas.add(botonesRecarga, BorderLayout.SOUTH);
 
+        // --- MITAD DERECHA: MONEDAS Y LOGROS ---
+        JPanel derecha = new JPanel(new GridLayout(2, 1, 0, Estilos.ESPACIO_GRANDE));
+        derecha.setOpaque(false);
+
         JPanel cuadroMonedas = new JPanel(new GridBagLayout());
         cuadroMonedas.setBackground(Estilos.FONDO_PANEL);
         cuadroMonedas.setBorder(Estilos.tarjeta());
 
         cboAlumnoMonedas = new JComboBox<>();
+        // ELIMINADO EL BONO INSTITUCIONAL
         JComboBox<String> cboMotivo = new JComboBox<>(new String[]{
-            "Participación destacada", "Puntualidad mensual", "Mejor promedio", "Convivencia ejemplar", "Bono institucional"
+            "Participación destacada", "Puntualidad mensual", "Mejor promedio", "Convivencia ejemplar"
         });
         JTextField txtDetalle = new JTextField("Otorgado por administración", 16);
         JSpinner spnMonedas = new JSpinner(new SpinnerNumberModel(20, 5, 500, 5));
@@ -476,8 +487,30 @@ public class PanelInicioAdmin extends JPanel {
         });
         agregarFilaForm(cuadroMonedas, f, "", btnDarMonedas, false);
 
+        // NUEVA TABLA DE HISTORIAL DE LOGROS PARA EL ADMIN
+        JPanel cuadroHistorialLogros = new JPanel(new BorderLayout(0, Estilos.ESPACIO_CHICO));
+        cuadroHistorialLogros.setBackground(Estilos.FONDO_PANEL);
+        cuadroHistorialLogros.setBorder(Estilos.tarjeta());
+        cuadroHistorialLogros.add(Estilos.subtitulo("Historial General de Logros (BD)"), BorderLayout.NORTH);
+
+        tablaLogros = new PanelTablaBase<>(
+                new String[]{"Fecha", "Alumno", "Autor", "Logro", "Monedas"},
+                l -> new Object[]{
+                    Formato.fechaHora(l.fecha()), 
+                    l.nombreEstudiante(), 
+                    l.nombreDocente(), 
+                    l.tipo(), 
+                    "+" + Formato.monedas(l.monedas())
+                }
+        );
+        tablaLogros.ocultarFiltroFecha();
+        cuadroHistorialLogros.add(tablaLogros, BorderLayout.CENTER);
+
+        derecha.add(cuadroMonedas);
+        derecha.add(cuadroHistorialLogros);
+
         contenedor.add(cuadroRecargas);
-        contenedor.add(cuadroMonedas);
+        contenedor.add(derecha); // Agregamos la mitad derecha que ahora tiene 2 cuadros
         return contenedor;
     }
 
@@ -697,6 +730,7 @@ public class PanelInicioAdmin extends JPanel {
             recargas = recargaController.listarTodas();
             productos = catalogoController.listarTodos();
             descuadres = reporteController.descuadres().size();
+            tablaLogros.setDatos(logroController.listarTodos());
         } catch (NegocioException e) {
             DialogoConfirmacion.error(this, e.getMessage());
         }
