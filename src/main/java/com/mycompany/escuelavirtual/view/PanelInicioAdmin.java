@@ -9,6 +9,7 @@ import com.mycompany.escuelavirtual.controller.LogroController;
 import com.mycompany.escuelavirtual.controller.RecargaController;
 import com.mycompany.escuelavirtual.controller.ReporteController;
 import com.mycompany.escuelavirtual.controller.UsuarioController;
+import com.mycompany.escuelavirtual.model.DetalleLogro;
 import com.mycompany.escuelavirtual.model.DetalleRecarga;
 import com.mycompany.escuelavirtual.model.Producto;
 import com.mycompany.escuelavirtual.model.Usuario;
@@ -20,7 +21,7 @@ import com.mycompany.escuelavirtual.util.ui.DialogoConfirmacion;
 import com.mycompany.escuelavirtual.util.ui.Estilos;
 import com.mycompany.escuelavirtual.util.ui.PanelTablaBase;
 import com.mycompany.escuelavirtual.util.ui.Toast;
-import com.mycompany.escuelavirtual.model.DetalleLogro;
+import com.mycompany.escuelavirtual.view.BuscadorCombo;
 
 import java.awt.BorderLayout;
 import java.awt.FlowLayout;
@@ -28,12 +29,9 @@ import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.GridLayout;
 import java.awt.Insets;
-
 import java.math.BigDecimal;
-
 import java.util.ArrayList;
 import java.util.List;
-
 import javax.swing.BorderFactory;
 import javax.swing.JButton;
 import javax.swing.JComboBox;
@@ -51,6 +49,7 @@ public class PanelInicioAdmin extends JPanel {
     private static final long serialVersionUID = 1L;
 
     private record ItemComboUsuario(Integer id, String etiqueta) {
+
         @Override
         public String toString() {
             return etiqueta;
@@ -78,8 +77,12 @@ public class PanelInicioAdmin extends JPanel {
     private PanelTablaBase<DetalleRecarga> tablaRecargas;
     private PanelTablaBase<Producto> tablaProductos;
     private PanelTablaBase<DetalleLogro> tablaLogros;
+
     private JComboBox<ItemComboUsuario> cboAlumnoMonedas;
     private final JComboBox<ItemComboUsuario> cboPadreU = new JComboBox<>();
+
+    private final BuscadorCombo<ItemComboUsuario> buscadorPadreU;
+    private BuscadorCombo<ItemComboUsuario> buscadorAlumnoMonedas;
 
     private Usuario usuarioEnEdicion = null;
     private Producto productoEnEdicion = null;
@@ -96,6 +99,9 @@ public class PanelInicioAdmin extends JPanel {
     private final JButton btnCancelarUsuario = Estilos.botonSecundario("Cancelar");
 
     // Controles de formulario de Producto
+    private final JComboBox<String> cboCategoriaP = new JComboBox<>(new String[]{
+        "Alimentos y Bebidas", "Útiles Escolares", "Uniformes y Accesorios", "Recompensas", "Otros"
+    });
     private final JTextField txtNombreP = new JTextField(14);
     private final JTextField txtDescP = new JTextField(14);
     private final JTextField txtPrecioSolesP = new JTextField("5.00", 8);
@@ -117,7 +123,18 @@ public class PanelInicioAdmin extends JPanel {
 
         JPanel norte = new JPanel(new BorderLayout(0, Estilos.ESPACIO));
         norte.setOpaque(false);
-        norte.add(Estilos.titulo("Panel de Administración General (Conectado a SQL Server)"), BorderLayout.NORTH);
+
+        JPanel cabeceraTitulo = new JPanel(new BorderLayout());
+        cabeceraTitulo.setOpaque(false);
+        cabeceraTitulo.add(Estilos.titulo("Panel de Administración General (Conectado a SQL Server)"), BorderLayout.WEST);
+        JButton btnRefrescar = Estilos.botonSecundario("↻ Actualizar Datos");
+        btnRefrescar.addActionListener(e -> {
+            recargarDesdeBD();
+            Toast.info(this, "Datos actualizados desde SQL Server.");
+        });
+        cabeceraTitulo.add(btnRefrescar, BorderLayout.EAST);
+        norte.add(cabeceraTitulo, BorderLayout.NORTH);
+
         norte.add(crearBarraIndicadores(), BorderLayout.CENTER);
         add(norte, BorderLayout.NORTH);
 
@@ -128,6 +145,8 @@ public class PanelInicioAdmin extends JPanel {
         pestanas.addTab("3. Catálogo de Productos y Control de Stock", crearSeccionProductos());
 
         add(pestanas, BorderLayout.CENTER);
+
+        buscadorPadreU = new BuscadorCombo<>(cboPadreU);
         recargarDesdeBD();
     }
 
@@ -138,7 +157,6 @@ public class PanelInicioAdmin extends JPanel {
         barra.add(crearMiniTarjeta("Usuarios Inactivos", lblKpiInactivos));
         barra.add(crearMiniTarjeta("Recargas Pendientes", lblKpiRecargas));
         barra.add(crearMiniTarjeta("Productos por Reponer", lblKpiStockBajo));
-        // Conciliacion de ADR-04: cualquier valor distinto de cero exige revision (CP-20).
         barra.add(crearMiniTarjeta("Billeteras Descuadradas", lblKpiDescuadres));
         return barra;
     }
@@ -175,7 +193,7 @@ public class PanelInicioAdmin extends JPanel {
 
         btnGuardarUsuario.addActionListener(e -> {
             Rol rol = (Rol) cboRolU.getSelectedItem();
-            ItemComboUsuario padreSel = (ItemComboUsuario) cboPadreU.getSelectedItem();
+            ItemComboUsuario padreSel = buscadorPadreU.getSeleccionado();
             Integer idPadre = (rol == Rol.ESTUDIANTE && padreSel != null) ? padreSel.id() : null;
 
             try {
@@ -230,7 +248,6 @@ public class PanelInicioAdmin extends JPanel {
         JPanel derecha = new JPanel(new GridLayout(2, 1, 0, Estilos.ESPACIO));
         derecha.setOpaque(false);
 
-        // Cuadro Activos
         JPanel cuadroActivos = new JPanel(new BorderLayout(0, Estilos.ESPACIO_CHICO));
         cuadroActivos.setBackground(Estilos.FONDO_PANEL);
         cuadroActivos.setBorder(Estilos.tarjeta());
@@ -278,7 +295,6 @@ public class PanelInicioAdmin extends JPanel {
         cuadroActivos.add(topActivos, BorderLayout.NORTH);
         cuadroActivos.add(tablaActivos, BorderLayout.CENTER);
 
-        // Cuadro Inactivos
         JPanel cuadroInactivos = new JPanel(new BorderLayout(0, Estilos.ESPACIO_CHICO));
         cuadroInactivos.setBackground(Estilos.FONDO_PANEL);
         cuadroInactivos.setBorder(Estilos.tarjeta());
@@ -439,7 +455,6 @@ public class PanelInicioAdmin extends JPanel {
         botonesRecarga.add(btnAprobar);
         cuadroRecargas.add(botonesRecarga, BorderLayout.SOUTH);
 
-        // --- MITAD DERECHA: MONEDAS Y LOGROS ---
         JPanel derecha = new JPanel(new GridLayout(2, 1, 0, Estilos.ESPACIO_GRANDE));
         derecha.setOpaque(false);
 
@@ -448,7 +463,8 @@ public class PanelInicioAdmin extends JPanel {
         cuadroMonedas.setBorder(Estilos.tarjeta());
 
         cboAlumnoMonedas = new JComboBox<>();
-        // ELIMINADO EL BONO INSTITUCIONAL
+        buscadorAlumnoMonedas = new BuscadorCombo<>(cboAlumnoMonedas);
+
         JComboBox<String> cboMotivo = new JComboBox<>(new String[]{
             "Participación destacada", "Puntualidad mensual", "Mejor promedio", "Convivencia ejemplar"
         });
@@ -464,7 +480,7 @@ public class PanelInicioAdmin extends JPanel {
 
         JButton btnDarMonedas = Estilos.botonPrimario("Acreditar Monedas Especiales");
         btnDarMonedas.addActionListener(e -> {
-            ItemComboUsuario alumno = (ItemComboUsuario) cboAlumnoMonedas.getSelectedItem();
+            ItemComboUsuario alumno = buscadorAlumnoMonedas.getSeleccionado();
             int cant = (Integer) spnMonedas.getValue();
             if (alumno == null || alumno.id() == null) {
                 return;
@@ -487,7 +503,6 @@ public class PanelInicioAdmin extends JPanel {
         });
         agregarFilaForm(cuadroMonedas, f, "", btnDarMonedas, false);
 
-        // NUEVA TABLA DE HISTORIAL DE LOGROS PARA EL ADMIN
         JPanel cuadroHistorialLogros = new JPanel(new BorderLayout(0, Estilos.ESPACIO_CHICO));
         cuadroHistorialLogros.setBackground(Estilos.FONDO_PANEL);
         cuadroHistorialLogros.setBorder(Estilos.tarjeta());
@@ -496,10 +511,10 @@ public class PanelInicioAdmin extends JPanel {
         tablaLogros = new PanelTablaBase<>(
                 new String[]{"Fecha", "Alumno", "Autor", "Logro", "Monedas"},
                 l -> new Object[]{
-                    Formato.fechaHora(l.fecha()), 
-                    l.nombreEstudiante(), 
-                    l.nombreDocente(), 
-                    l.tipo(), 
+                    Formato.fechaHora(l.fecha()),
+                    l.nombreEstudiante(),
+                    l.nombreDocente(),
+                    l.tipo(),
                     "+" + Formato.monedas(l.monedas())
                 }
         );
@@ -510,7 +525,7 @@ public class PanelInicioAdmin extends JPanel {
         derecha.add(cuadroHistorialLogros);
 
         contenedor.add(cuadroRecargas);
-        contenedor.add(derecha); // Agregamos la mitad derecha que ahora tiene 2 cuadros
+        contenedor.add(derecha);
         return contenedor;
     }
 
@@ -543,6 +558,7 @@ public class PanelInicioAdmin extends JPanel {
             try {
                 if (productoEnEdicion == null) {
                     Producto nuevo = new Producto();
+                    nuevo.setCategoria((String) cboCategoriaP.getSelectedItem());
                     nuevo.setNombre(txtNombreP.getText().trim());
                     nuevo.setDescripcion(txtDescP.getText().trim());
                     nuevo.setPrecioDinero(pDinero);
@@ -552,6 +568,7 @@ public class PanelInicioAdmin extends JPanel {
                     catalogoController.registrar(nuevo);
                     Toast.exito(this, "Producto agregado a SQL Server.");
                 } else {
+                    productoEnEdicion.setCategoria((String) cboCategoriaP.getSelectedItem());
                     productoEnEdicion.setNombre(txtNombreP.getText().trim());
                     productoEnEdicion.setDescripcion(txtDescP.getText().trim());
                     productoEnEdicion.setPrecioDinero(pDinero);
@@ -574,6 +591,7 @@ public class PanelInicioAdmin extends JPanel {
 
         int f = 0;
         agregarFilaForm(form, f++, "Datos de Producto", null, true);
+        agregarFilaForm(form, f++, "Categoría:", cboCategoriaP, false);
         agregarFilaForm(form, f++, "Nombre:", txtNombreP, false);
         agregarFilaForm(form, f++, "Descripción:", txtDescP, false);
         agregarFilaForm(form, f++, "Precio S/ (opcional):", txtPrecioSolesP, false);
@@ -586,9 +604,10 @@ public class PanelInicioAdmin extends JPanel {
         cuadroTabla.setBorder(Estilos.tarjeta());
 
         tablaProductos = new PanelTablaBase<>(
-                new String[]{"ID", "Producto", "Descripción", "Precio S/", "Precio Monedas", "Stock", "Estado / Aviso"},
+                new String[]{"ID", "Categoría", "Producto", "Descripción", "Precio S/", "Precio Monedas", "Stock", "Estado / Aviso"},
                 p -> new Object[]{
                     p.getIdProducto(),
+                    p.getCategoria(),
                     p.getNombre(),
                     p.getDescripcion() == null ? "" : p.getDescripcion(),
                     p.getPrecioDinero() == null ? "-" : Formato.dinero(p.getPrecioDinero()),
@@ -682,6 +701,7 @@ public class PanelInicioAdmin extends JPanel {
             return;
         }
         productoEnEdicion = sel;
+        cboCategoriaP.setSelectedItem(sel.getCategoria());
         txtNombreP.setText(sel.getNombre());
         txtDescP.setText(sel.getDescripcion() == null ? "" : sel.getDescripcion());
         txtPrecioSolesP.setText(sel.getPrecioDinero() != null ? sel.getPrecioDinero().toString() : "");
@@ -694,6 +714,7 @@ public class PanelInicioAdmin extends JPanel {
 
     private void limpiarFormularioProducto() {
         productoEnEdicion = null;
+        cboCategoriaP.setSelectedIndex(0);
         txtNombreP.setText("");
         txtDescP.setText("");
         txtPrecioSolesP.setText("");
@@ -730,7 +751,6 @@ public class PanelInicioAdmin extends JPanel {
             recargas = recargaController.listarTodas();
             productos = catalogoController.listarTodos();
             descuadres = reporteController.descuadres().size();
-            tablaLogros.setDatos(logroController.listarTodos());
         } catch (NegocioException e) {
             DialogoConfirmacion.error(this, e.getMessage());
         }
@@ -741,19 +761,23 @@ public class PanelInicioAdmin extends JPanel {
         tablaInactivos.setDatos(listaInactivos);
         tablaRecargas.setDatos(recargas);
         tablaProductos.setDatos(productos.stream().filter(Producto::isActivo).toList());
+        tablaLogros.setDatos(logroController.listarTodos());
 
-        cboAlumnoMonedas.removeAllItems();
-        cboPadreU.removeAllItems();
-        cboPadreU.addItem(new ItemComboUsuario(null, "Sin padre asignado"));
+        List<ItemComboUsuario> listaAlumnosCombo = new ArrayList<>();
+        List<ItemComboUsuario> listaPadresCombo = new ArrayList<>();
+        listaPadresCombo.add(new ItemComboUsuario(null, "Sin padre asignado"));
 
         for (Usuario u : listaActivos) {
             if (u.getRol() == Rol.ESTUDIANTE) {
                 String gradoSec = (u.getGrado() == null ? "-" : u.getGrado()) + " " + (u.getSeccion() == null ? "-" : u.getSeccion());
-                cboAlumnoMonedas.addItem(new ItemComboUsuario(u.getIdUsuario(), u.getNombreCompleto() + " (" + gradoSec + ")"));
+                listaAlumnosCombo.add(new ItemComboUsuario(u.getIdUsuario(), u.getNombreCompleto() + " (" + gradoSec + ")"));
             } else if (u.getRol() == Rol.PADRE) {
-                cboPadreU.addItem(new ItemComboUsuario(u.getIdUsuario(), u.getNombreCompleto()));
+                listaPadresCombo.add(new ItemComboUsuario(u.getIdUsuario(), u.getNombreCompleto()));
             }
         }
+
+        buscadorAlumnoMonedas.setElementos(listaAlumnosCombo);
+        buscadorPadreU.setElementos(listaPadresCombo);
 
         lblKpiActivos.setText(String.valueOf(listaActivos.size()));
         lblKpiInactivos.setText(String.valueOf(listaInactivos.size()));

@@ -44,7 +44,10 @@ public class ProductoDAO extends BaseDAO {
                 VALUES (?, ?, ?, ?, ?, ?)""";
         try (Connection cn = connection(); PreparedStatement ps = cn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
             ps.setString(1, p.getNombre().trim());
-            ps.setString(2, p.getDescripcion() == null ? "" : p.getDescripcion().trim());
+            
+            String descGuardar = "[" + p.getCategoria() + "] " + (p.getDescripcion() == null ? "" : p.getDescripcion().trim());
+            ps.setString(2, descGuardar);
+            
             if (p.getPrecioDinero() != null) {
                 ps.setBigDecimal(3, p.getPrecioDinero());
             } else {
@@ -75,7 +78,10 @@ public class ProductoDAO extends BaseDAO {
                  WHERE id_producto = ?""";
         try (Connection cn = connection(); PreparedStatement ps = cn.prepareStatement(sql)) {
             ps.setString(1, p.getNombre().trim());
-            ps.setString(2, p.getDescripcion() == null ? "" : p.getDescripcion().trim());
+            
+            String descGuardar = "[" + p.getCategoria() + "] " + (p.getDescripcion() == null ? "" : p.getDescripcion().trim());
+            ps.setString(2, descGuardar);
+            
             if (p.getPrecioDinero() != null) {
                 ps.setBigDecimal(3, p.getPrecioDinero());
             } else {
@@ -139,7 +145,20 @@ public class ProductoDAO extends BaseDAO {
         Producto p = new Producto();
         p.setIdProducto(rs.getInt("id_producto"));
         p.setNombre(rs.getString("nombre"));
-        p.setDescripcion(rs.getString("descripcion"));
+
+        String desc = rs.getString("descripcion");
+        if (desc != null && desc.startsWith("[")) {
+            int fin = desc.indexOf("]");
+            if (fin > 0) {
+                p.setCategoria(desc.substring(1, fin));
+                p.setDescripcion(desc.substring(fin + 1).trim());
+            } else {
+                p.setDescripcion(desc);
+            }
+        } else {
+            p.setDescripcion(desc);
+        }
+
         BigDecimal dinero = rs.getBigDecimal("precio_dinero");
         p.setPrecioDinero(dinero);
         int monedas = rs.getInt("precio_monedas");

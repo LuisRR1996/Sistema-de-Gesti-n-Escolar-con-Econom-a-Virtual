@@ -136,4 +136,22 @@ public class RecargaDAO extends BaseDAO {
             ps.executeUpdate();
         }
     }
+    
+    /**
+     * Cuenta cuántas recargas ha solicitado un padre en el día actual en SQL
+     * Server.
+     */
+    public int contarRecargasDelDiaPorPadre(int idPadre) throws SQLException {
+        String sql = """
+                SELECT COUNT(*)
+                  FROM recargas
+                 WHERE id_padre = ? AND CAST(fecha AS DATE) = CAST(SYSDATETIME() AS DATE)""";
+        try (Connection cn = connection(); PreparedStatement ps = cn.prepareStatement(sql)) {
+            ps.setInt(1, idPadre);
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next() ? rs.getInt(1) : 0;
+            }
+        }
+    }
+    
 }

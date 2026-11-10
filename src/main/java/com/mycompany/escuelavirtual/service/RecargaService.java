@@ -44,7 +44,9 @@ public class RecargaService extends ServicioBase {
         this.usuarioDAO = usuarioDAO;
     }
 
-    /** Registra la solicitud. Un padre solo puede recargar a sus hijos (RN-08). */
+    /**
+     * Registra la solicitud. Un padre solo puede recargar a sus hijos (RN-08).
+     */
     public void registrar(Usuario actor, int idEstudiante, BigDecimal monto, MetodoPago metodo) {
         Permisos.exigir(actor, Accion.REGISTRAR_RECARGA);
         if (!Validador.esMontoDineroValido(monto)) {
@@ -54,6 +56,31 @@ public class RecargaService extends ServicioBase {
         if (metodo == null) {
             throw new NegocioException(CodigoError.DATO_INVALIDO, "Seleccione el método de pago.");
         }
+
+        // --- VALIDACIÓN 1: Límites máximos según método de pago ---
+        BigDecimal limiteMaximo = switch (metodo) {
+            case YAPE, PLIN ->
+                new BigDecimal("500.00");
+            case EFECTIVO ->
+                new BigDecimal("1000.00");
+            case TRANSFERENCIA ->
+                new BigDecimal("3000.00");
+        };
+
+        if (monto.compareTo(limiteMaximo) > 0) {
+            throw new NegocioException(CodigoError.DATO_INVALIDO,
+                    "El monto máximo permitido para " + metodo + " es S/ " + limiteMaximo + ".");
+        }
+        // ----------------------------------------------------------
+
+        // --- VALIDACIÓN 2: Límite diario de cantidad de recargas ---
+        int recargasHoy = consultar(() -> recargaDAO.contarRecargasDelDiaPorPadre(actor.getIdUsuario()));
+        if (recargasHoy >= 5) {
+            throw new NegocioException(CodigoError.CONFLICTO,
+                    "Ha alcanzado el límite máximo de 5 solicitudes de recarga por día.");
+        }
+        // -----------------------------------------------------------
+
         boolean esSuHijo = actor.getRol() == Rol.PADRE
                 && consultar(() -> usuarioDAO.esHijoDe(actor.getIdUsuario(), idEstudiante));
         Permisos.exigirAccesoAEstudiante(actor, idEstudiante, esSuHijo);

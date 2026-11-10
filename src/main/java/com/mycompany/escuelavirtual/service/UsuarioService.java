@@ -73,6 +73,14 @@ public class UsuarioService extends ServicioBase {
         u.setNombres(nombres.trim());
         u.setApellidos(apellidos.trim());
         u.setCorreo(Validador.normalizarCorreo(correo));
+
+        // --- NUEVA VALIDACIÓN: Verificar que el correo no exista en la BD ---
+        Usuario existente = consultar(() -> usuarioDAO.findByCorreo(u.getCorreo()));
+        if (existente != null) {
+            throw new NegocioException(CodigoError.CONFLICTO, "Ya existe un usuario registrado con este correo.");
+        }
+        // --------------------------------------------------------------------
+
         u.setPasswordHash(PasswordUtil.hash(clavePlana)); // RN-12: nunca se guarda en claro.
         u.setRol(rol);
         u.setGrado(rol == Rol.ESTUDIANTE ? grado : null);
@@ -92,7 +100,16 @@ public class UsuarioService extends ServicioBase {
             throw new NegocioException(CodigoError.CONFLICTO,
                     "No puede quitarse a sí mismo el rol de administrador.");
         }
+
         u.setCorreo(Validador.normalizarCorreo(u.getCorreo()));
+
+        // --- NUEVA VALIDACIÓN: Verificar que el correo no lo use otro usuario ---
+        Usuario existente = consultar(() -> usuarioDAO.findByCorreo(u.getCorreo()));
+        if (existente != null && !existente.getIdUsuario().equals(u.getIdUsuario())) {
+            throw new NegocioException(CodigoError.CONFLICTO, "El correo ingresado ya está en uso por otro usuario.");
+        }
+        // ------------------------------------------------------------------------
+
         ejecutar(() -> usuarioDAO.actualizar(u));
     }
 
