@@ -89,3 +89,9 @@ desktop.ini
 *.tmp
 *.orig
 *.rej
+
+# -------------- Otros ------------------
+# Los documentos en markdown se versionan (T13); los binarios pesados, no.
+docs/*.docx
+docs/*.xlsx
+docs/*.pdf
