@@ -35,10 +35,6 @@ import javax.swing.JPanel;
 import javax.swing.JSpinner;
 import javax.swing.SpinnerNumberModel;
 
-/**
- *
- * @author user
- */
 public class PanelInicioEstudiante extends JPanel {
 
     private static final long serialVersionUID = 1L;
@@ -46,12 +42,13 @@ public class PanelInicioEstudiante extends JPanel {
     private static class ItemTienda {
 
         int id, stock;
-        String nombre;
+        String categoria, nombre;
         BigDecimal precioDinero;
         Integer precioMonedas;
 
-        ItemTienda(int id, String nombre, BigDecimal precioDinero, Integer precioMonedas, int stock) {
+        ItemTienda(int id, String categoria, String nombre, BigDecimal precioDinero, Integer precioMonedas, int stock) {
             this.id = id;
+            this.categoria = categoria;
             this.nombre = nombre;
             this.precioDinero = precioDinero;
             this.precioMonedas = precioMonedas;
@@ -121,7 +118,17 @@ public class PanelInicioEstudiante extends JPanel {
 
         JPanel norte = new JPanel(new BorderLayout(0, Estilos.ESPACIO));
         norte.setOpaque(false);
-        norte.add(Estilos.titulo("Mi Billetera, Tienda y Logros"), BorderLayout.NORTH);
+
+        JPanel cabeceraTitulo = new JPanel(new BorderLayout());
+        cabeceraTitulo.setOpaque(false);
+        cabeceraTitulo.add(Estilos.titulo("Mi Billetera, Tienda y Logros"), BorderLayout.WEST);
+        JButton btnRefrescar = Estilos.botonSecundario("↻ Actualizar Datos");
+        btnRefrescar.addActionListener(e -> {
+            recargarDesdeBD();
+            Toast.info(this, "Datos actualizados desde SQL Server.");
+        });
+        cabeceraTitulo.add(btnRefrescar, BorderLayout.EAST);
+        norte.add(cabeceraTitulo, BorderLayout.NORTH);
 
         JPanel pnlSaldos = new JPanel(new GridLayout(1, 2, Estilos.ESPACIO_GRANDE, 0));
         pnlSaldos.setOpaque(false);
@@ -157,9 +164,9 @@ public class PanelInicioEstudiante extends JPanel {
         cuadro.add(Estilos.subtitulo("Tienda Escolar y Catálogo de Recompensas (Stock en vivo BD)"), BorderLayout.NORTH);
 
         tablaTienda = new PanelTablaBase<>(
-                new String[]{"ID", "Producto / Recompensa", "Precio S/", "Costo Monedas", "Stock"},
+                new String[]{"ID", "Categoría", "Producto / Recompensa", "Precio S/", "Costo Monedas", "Stock"},
                 p -> new Object[]{
-                    p.id, p.nombre,
+                    p.id, p.categoria, p.nombre,
                     p.precioDinero == null ? "No aplica" : Formato.dinero(p.precioDinero),
                     p.precioMonedas == null ? "No aplica" : Formato.monedas(p.precioMonedas),
                     p.stock
@@ -191,8 +198,6 @@ public class PanelInicioEstudiante extends JPanel {
                 return;
             }
             try {
-                // El saldo, el stock y la validez del método se comprueban en el
-                // servicio, dentro de la transacción; aquí solo se informa.
                 if (conDinero) {
                     compraController.comprar(prod.id, cant);
                 } else {
@@ -268,7 +273,7 @@ public class PanelInicioEstudiante extends JPanel {
 
             catalogo.clear();
             for (Producto p : catalogoController.listarActivos()) {
-                catalogo.add(new ItemTienda(p.getIdProducto(), p.getNombre(), p.getPrecioDinero(),
+                catalogo.add(new ItemTienda(p.getIdProducto(), p.getCategoria(), p.getNombre(), p.getPrecioDinero(),
                         p.getPrecioMonedas(), p.getStock()));
             }
 

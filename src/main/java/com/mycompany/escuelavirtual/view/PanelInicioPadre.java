@@ -99,7 +99,16 @@ public class PanelInicioPadre extends JPanel {
         setBackground(Estilos.FONDO);
         setBorder(Estilos.margen());
 
-        add(Estilos.titulo("Supervisión Familiar y Recargas (Grupo Familiar BD)"), BorderLayout.NORTH);
+        JPanel cabeceraTitulo = new JPanel(new BorderLayout());
+        cabeceraTitulo.setOpaque(false);
+        cabeceraTitulo.add(Estilos.titulo("Supervisión Familiar y Recargas (Grupo Familiar BD)"), BorderLayout.WEST);
+        JButton btnRefrescar = Estilos.botonSecundario("↻ Actualizar Datos");
+        btnRefrescar.addActionListener(e -> {
+            recargarDesdeBD();
+            Toast.info(this, "Datos actualizados desde SQL Server.");
+        });
+        cabeceraTitulo.add(btnRefrescar, BorderLayout.EAST);
+        add(cabeceraTitulo, BorderLayout.NORTH);
 
         JPanel cuadricula = new JPanel(new GridLayout(2, 2, Estilos.ESPACIO_GRANDE, Estilos.ESPACIO_GRANDE));
         cuadricula.setOpaque(false);

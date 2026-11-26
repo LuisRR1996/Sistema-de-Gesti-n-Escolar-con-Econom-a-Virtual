@@ -8,6 +8,16 @@ public class Producto {
     private BigDecimal precioDinero;
     private boolean activo = true;
 
+    private String categoria = "Otros";
+
+    public String getCategoria() {
+        return categoria;
+    }
+
+    public void setCategoria(String v) {
+        this.categoria = v == null || v.isBlank() ? "Otros" : v;
+    }
+    
     public Producto() {
     }
 

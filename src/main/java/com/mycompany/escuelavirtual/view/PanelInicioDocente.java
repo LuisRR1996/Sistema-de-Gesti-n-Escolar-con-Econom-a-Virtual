@@ -15,6 +15,8 @@ import com.mycompany.escuelavirtual.util.ui.DialogoConfirmacion;
 import com.mycompany.escuelavirtual.util.ui.Estilos;
 import com.mycompany.escuelavirtual.util.ui.PanelTablaBase;
 import com.mycompany.escuelavirtual.util.ui.Toast;
+import com.mycompany.escuelavirtual.view.BuscadorCombo;
+
 import java.awt.BorderLayout;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
@@ -67,6 +69,8 @@ public class PanelInicioDocente extends JPanel {
     private PanelTablaBase<AlumnoAula> tablaAlumnos;
     private PanelTablaBase<DetalleLogro> tablaLogros;
     private final JComboBox<AlumnoAula> cboEstudiante = new JComboBox<>();
+    
+    private BuscadorCombo<AlumnoAula> buscadorEstudiante;
 
     public PanelInicioDocente(Usuario docenteActual) {
         this.usuarioController = new UsuarioController(docenteActual);
@@ -76,7 +80,16 @@ public class PanelInicioDocente extends JPanel {
         setBackground(Estilos.FONDO);
         setBorder(Estilos.margen());
 
-        add(Estilos.titulo("Panel Docente - Registro de Logros e Incentivos"), BorderLayout.NORTH);
+        JPanel cabeceraTitulo = new JPanel(new BorderLayout());
+        cabeceraTitulo.setOpaque(false);
+        cabeceraTitulo.add(Estilos.titulo("Panel Docente - Registro de Logros e Incentivos"), BorderLayout.WEST);
+        JButton btnRefrescar = Estilos.botonSecundario("↻ Actualizar Datos");
+        btnRefrescar.addActionListener(e -> {
+            recargarDesdeBD();
+            Toast.info(this, "Datos actualizados desde SQL Server.");
+        });
+        cabeceraTitulo.add(btnRefrescar, BorderLayout.EAST);
+        add(cabeceraTitulo, BorderLayout.NORTH);
 
         JPanel cuerpo = new JPanel(new BorderLayout(Estilos.ESPACIO_GRANDE, 0));
         cuerpo.setOpaque(false);
@@ -84,6 +97,8 @@ public class PanelInicioDocente extends JPanel {
         cuerpo.add(crearCuadrosDerechos(), BorderLayout.CENTER);
         add(cuerpo, BorderLayout.CENTER);
 
+        buscadorEstudiante = new BuscadorCombo<>(cboEstudiante); 
+        
         recargarDesdeBD();
     }
 
@@ -101,7 +116,7 @@ public class PanelInicioDocente extends JPanel {
         JButton btnOtorgar = Estilos.botonPrimario("Otorgar Monedas por Mérito");
 
         btnOtorgar.addActionListener(e -> {
-            AlumnoAula alumno = (AlumnoAula) cboEstudiante.getSelectedItem();
+            AlumnoAula alumno = buscadorEstudiante.getSeleccionado();
             if (alumno == null) {
                 DialogoConfirmacion.error(this, "Seleccione un estudiante.");
                 return;
@@ -185,11 +200,11 @@ public class PanelInicioDocente extends JPanel {
         c.weightx = 1.0;
         panel.add(campo, c);
     }
-
+    
     private void recargarDesdeBD() {
         try {
             alumnos.clear();
-            cboEstudiante.removeAllItems();
+            List<AlumnoAula> nuevaLista = new ArrayList<>(); 
             for (Usuario e : usuarioController.listarPorRol(Rol.ESTUDIANTE)) {
                 AlumnoAula aula = new AlumnoAula(
                         e.getIdUsuario(),
@@ -197,12 +212,13 @@ public class PanelInicioDocente extends JPanel {
                         e.getGrado() == null ? "-" : e.getGrado(),
                         e.getSeccion() == null ? "-" : e.getSeccion());
                 alumnos.add(aula);
-                cboEstudiante.addItem(aula);
+                nuevaLista.add(aula);
             }
+            buscadorEstudiante.setElementos(nuevaLista);
             tablaAlumnos.setDatos(alumnos);
             tablaLogros.setDatos(logroController.listarOtorgadosPorMi());
         } catch (NegocioException e) {
             DialogoConfirmacion.error(this, e.getMessage());
         }
-    }
+    }   
 }
